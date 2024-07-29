@@ -25,7 +25,7 @@ jobs:
     strategy:
       matrix:
         buildType:
-          - {name: "Release", baseImageName : "randriu/paynt", imageName : "${{ secrets.DOCKERHUB_USERNAME }}/paynt-learner", dockerTag: "latest", setupArgs: ""}
+          - {name: "Release", baseImageName : "randriu/paynt", imageName : "marisgg/paynt-learner", dockerTag: "latest", setupArgs: ""}
       fail-fast: false
     steps:
       - name: Git clone
