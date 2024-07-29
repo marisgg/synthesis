@@ -1,24 +1,9 @@
-FROM movesrwth/stormpy:ci
+ARG paynt_base=randriu/paynt:ci
 
-# Additional arguments for compiling payntbind
-ARG setup_args=""
-# Number of threads to use for parallel compilation
-ARG no_threads=2
+FROM $paynt_base
 
-WORKDIR /opt/
+RUN pip install torch==2.4.* "jax[cuda12]"
 
-# install dependencies
-RUN apt-get update -qq
-RUN apt-get install -y graphviz
-RUN pip install click z3-solver graphviz
+RUN pip install ipykernel joblib tensorboard==2.15.* einops==0.7.* gym==0.22.* pygame==2.5.* tqdm
 
-# build paynt
-WORKDIR /opt/paynt
-COPY . .
-WORKDIR /opt/paynt/payntbind
-RUN python setup.py build_ext $setup_args -j $no_threads develop
-
-WORKDIR /opt/paynt
-
-# (optional) install paynt
-RUN pip install -e .
+WORKDIR /opt/learning
