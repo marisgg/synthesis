@@ -1,5 +1,5 @@
-name: Build Test
-# Builds and tests paynt and deploys images to Dockerhub
+name: Build Deploy
+# Builds and and deploys image of Paynt with additional dependencies to Dockerhub
 
 on:
   push:
@@ -25,7 +25,7 @@ jobs:
     strategy:
       matrix:
         buildType:
-          - {name: "Release", baseImageName : "randriu/paynt", imageName : "marisgg/paynt-learner", dockerTag: "latest", setupArgs: ""}
+          - {name: "Release", baseImageName : "randriu/paynt", imageName : "${{ secrets.DOCKERHUB_USERNAME }}/paynt-learner", dockerTag: "latest", setupArgs: ""}
       fail-fast: false
     steps:
       - name: Git clone
@@ -37,9 +37,9 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-        # Only login if using master on original repo (and not for pull requests or forks)
+        # Only login if using master on this forked repo
         if: github.repository_owner == 'marisgg' && github.ref == 'refs/heads/master'
       - name: Deploy paynt image with learner dependencies
-        # Only deploy if using master on original repo (and not for pull requests or forks)
+        # Only deploy if using master on this forked repo
         if: github.repository_owner == 'marisgg' && github.ref == 'refs/heads/master'
         run: docker push ${{ matrix.buildType.imageName }}:${{ matrix.buildType.dockerTag }}
