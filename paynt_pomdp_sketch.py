@@ -22,13 +22,23 @@ def load_sketch(project_path):
 
 def assignment_to_pomdp(pomdp_sketch, assignment):
     pomdp = pomdp_sketch.build_pomdp(assignment).model
-    print(pomdp)
     updated = payntbind.synthesis.restoreActionsInAbsorbingStates(pomdp)
     if updated is not None: pomdp = updated
-    print(pomdp)
+    action_labels,_ = payntbind.synthesis.extractActionLabels(pomdp);
+    num_actions = len(action_labels)
     pomdp,choice_to_true_action = payntbind.synthesis.enableAllActions(pomdp)
-    action_labels,choice_to_action = payntbind.synthesis.extractActionLabels(pomdp)
-    print(pomdp)
+    observation_action_to_true_action = [None]* pomdp.nr_observations
+    for state in range(pomdp.nr_states):
+        obs = pomdp.observations[state]
+        if observation_action_to_true_action[obs] is not None:
+            continue
+        observation_action_to_true_action[obs] = [None] * num_actions
+        choice_0 = pomdp.transition_matrix.get_row_group_start(state)
+        for action in range(num_actions):
+            choice = choice_0+action
+            true_action = choice_to_true_action[choice]
+            observation_action_to_true_action[obs][action] = true_action
+    return pomdp,observation_action_to_true_action
 
 def random_fsc(pomdp_sketch, num_nodes):
     num_obs = pomdp_sketch.num_observations
@@ -48,7 +58,7 @@ def random_fsc(pomdp_sketch, num_nodes):
 
 
 def main():
-    profiling = False
+    profiling = True
     if profiling:
         profiler = cProfile.Profile()
         profiler.enable()
@@ -65,7 +75,7 @@ def main():
 
     # construct POMDP from the given hole assignment
     hole_assignment = pomdp_sketch.family.pick_any()
-    pomdp = assignment_to_pomdp(pomdp_sketch,hole_assignment)
+    pomdp,observation_action_to_true_action = assignment_to_pomdp(pomdp_sketch,hole_assignment)
 
     # construct an arbitrary 3-FSC
     fsc = random_fsc(pomdp_sketch,3)
