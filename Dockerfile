@@ -1,24 +1,21 @@
-FROM movesrwth/stormpy:ci
+ARG paynt_base=randriu/paynt:ci
 
-# Additional arguments for compiling payntbind
-ARG setup_args=""
-# Number of threads to use for parallel compilation
-ARG no_threads=2
+# Pull paynt
+FROM $paynt_base
 
-WORKDIR /opt/
+WORKDIR /opt/learning
 
-# install dependencies
-RUN apt-get update -qq
-RUN apt-get install -y graphviz
-RUN pip install click z3-solver psutil graphviz
+# Install PyTorch and Jax with CUDA support.
+RUN pip install torch==2.4.* "jax[cuda12]"
 
-# build paynt
-WORKDIR /opt/paynt
-COPY . .
-WORKDIR /opt/paynt/payntbind
-RUN python setup.py build_ext $setup_args -j $no_threads develop
+# Additional dependencies.
+RUN pip install ipykernel joblib tensorboard==2.15.* einops==0.7.* gym==0.22.* pygame==2.5.* tqdm
 
-WORKDIR /opt/paynt
+RUN apt-get update && apt-get install -y curl
 
-# (optional) install paynt
-RUN pip install -e .
+# install VS Code (code-server)
+RUN curl -fsSL https://code-server.dev/install.sh | sh
+
+# install VS Code extensions
+RUN code-server --install-extension ms-python.python \
+                --install-extension ms-toolsai.jupyter
