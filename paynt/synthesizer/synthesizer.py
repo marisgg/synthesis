@@ -16,7 +16,7 @@ class FamilyEvaluation:
 class Synthesizer:
 
     @staticmethod
-    def choose_synthesizer(quotient, method, fsc_synthesis, storm_control):
+    def choose_synthesizer(quotient, method, fsc_synthesis=False, storm_control=None):
 
         # hiding imports here to avoid mutual top-level imports
         import paynt.quotient.mdp
@@ -76,6 +76,21 @@ class Synthesizer:
     def method_name(self):
         ''' to be overridden '''
         pass
+
+    def global_time_limit_reached(self):
+        if paynt.utils.profiler.GlobalTimeLimit.limit_reached():
+            logger.info("time limit reached, aborting...")
+            return True
+        return False
+
+    def global_memory_limit_reached(self):
+        if paynt.utils.profiler.GlobalMemoryLimit.limit_reached():
+            logger.info("memory limit reached, aborting...")
+            return True
+        return False
+
+    def global_resource_limit_reached(self):
+        return self.global_time_limit_reached() or self.global_memory_limit_reached()
 
     def set_optimality_threshold(self, optimum_threshold):
         if self.quotient.specification.has_optimality and optimum_threshold is not None:
@@ -153,8 +168,9 @@ class Synthesizer:
         if self.best_assignment is not None and self.best_assignment.size > 1 and not return_all:
             self.best_assignment = self.best_assignment.pick_any()
         self.stat.finished_synthesis()
-        # logger.info("synthesis finished, printing synthesized assignment below:")
-        # logger.info(assignment)
+        if self.best_assignment is not None:
+            logger.info("printing synthesized assignment below:")
+            logger.info(self.best_assignment)
 
         if self.best_assignment is not None and self.best_assignment.size == 1:
             dtmc = self.quotient.build_assignment(self.best_assignment)
