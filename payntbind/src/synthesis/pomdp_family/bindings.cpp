@@ -4,6 +4,13 @@
 #include "FscUnfolder.h"
 #include "GameAbstractionSolver.h"
 
+#include "SparseDerivativeInstantiationModelCheckerFamily.h"
+#include "GradientDescentInstantiationSearcherFamily.h"
+#include <storm/environment/Environment.h>
+#include <storm/modelchecker/results/ExplicitQuantitativeCheckResult.h>
+#include <storm-pars/utility/FeasibilitySynthesisTask.h>
+#include <storm-pars/derivative/GradientDescentMethod.h>
+
 void bindings_pomdp_family(py::module& m) {
 
     py::class_<synthesis::ObservationEvaluator<double>>(m, "ObservationEvaluator")
@@ -45,4 +52,45 @@ void bindings_pomdp_family(py::module& m) {
         .def("enable_profiling", &synthesis::GameAbstractionSolver<double>::enableProfiling)
         .def("print_profiling", &synthesis::GameAbstractionSolver<double>::printProfiling)
         ;
+
+
+    py::class_<storm::derivative::SparseDerivativeInstantiationModelCheckerFamily<storm::RationalFunction, double>>(m, "SparseDerivativeInstantiationModelCheckerFamily", "Derivatives and stuff.")
+        .def(py::init<storm::models::sparse::Dtmc<storm::RationalFunction> const&>(), "Constructor.")
+        // .def("check", py::overload_cast<storm::Environment const&, storm::utility::parametric::Valuation<storm::RationalFunction> const&, typename storm::utility::parametric::VariableType<storm::RationalFunction>::type const&>(&storm::derivative::SparseDerivativeInstantiationModelCheckerFamily<storm::RationalFunction, double>::check)
+        .def("specifyFormula", &storm::derivative::SparseDerivativeInstantiationModelCheckerFamily<storm::RationalFunction, double>::specifyFormula)
+        // .def("check", &storm::derivative::SparseDerivativeInstantiationModelCheckerFamily<storm::RationalFunction, double>::check, py::arg("env"), py::arg("valuation"), py::arg("parameter"), py::arg("valueVector")=boost::none)
+        .def("check", [](
+            storm::derivative::SparseDerivativeInstantiationModelCheckerFamily<storm::RationalFunction,double> & der,
+            storm::Environment const& env,
+            storm::utility::parametric::Valuation<storm::RationalFunction> const& valuation,
+            typename storm::utility::parametric::VariableType<storm::RationalFunction>::type const& parameter
+        ) { return der.check(env,valuation,parameter); })
+        ;
+    
+    py::class_<storm::pars::FeasibilitySynthesisTask, std::shared_ptr<storm::pars::FeasibilitySynthesisTask>>(m, "FeasibilitySynthesisTask")
+        .def(py::init<std::shared_ptr<storm::logic::Formula const> const&>())
+        .def("set_bound", [](storm::pars::FeasibilitySynthesisTask& task, storm::logic::ComparisonType comparisonType, storm::expressions::Expression const& bound) {
+            task.setBound(storm::logic::Bound(comparisonType, bound));
+        })
+        ;
+
+    py::class_<storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>>(m, "GradientDescentInstantiationSearcherFamily", "Derivatives wrapper and stuff.")
+        .def(py::init<storm::models::sparse::Dtmc<storm::RationalFunction> const&>(), "Constructor.")
+        // .def(py::init([](
+        //     storm::models::sparse::Dtmc<storm::RationalFunction> const& model, double learningRate,
+        //     double averageDecay, double squaredAverageDecay, uint_fast64_t miniBatchSize, double terminationEpsilon,
+        //     boost::optional<std::map<typename utility::parametric::VariableType<storm::RationalFunction>::type, typename utility::parametric::CoefficientType<storm::RationalFunction>::type>> startPoint, bool recordRun
+        // ) {
+        //     GradientDescentMethod method = GradientDescentMethod::ADAM;
+        //     GradientDescentConstraintMethod constraintMethod = GradientDescentConstraintMethod::PROJECT_WITH_GRADIENT;
+        //     return GradientDescentInstantiationSearcherFamily(model,method,learningRate,averageDecay,squaredAverageDecay,miniBatchSize,terminationEpsilon,startPoint,constraintMethod,recordRun);
+        // }))
+
+        // .def_property("derivativeEvaluationHelper", [](storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>& solver) {return solver.derivativeEvaluationHelper;})
+        // .def_property("parameters", [](storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>& solver) {return solver.parameters;})
+
+        .def("setup", &storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>::setup)
+        .def("gradientDescent", &storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>::gradientDescent)
+        ;
+
 }
