@@ -74,11 +74,15 @@ def main():
 
     # enable PAYNT logging
     paynt.cli.setup_logger()
+    
+    
 
     # load sketch
-    # project_path="models/pomdp/sketches/obstacles"
-    project_path="models/pomdp/sketches/obstacles-10-2"
+    # project_path="models/pomdp/sketches/obstacles-10-2"
+    project_path="models/pomdp/sketches/test"
     pomdp_sketch = load_sketch(project_path)
+    
+    reward_model_name = pomdp_sketch.get_property().get_reward_name()
 
     # construct POMDP from the given hole assignment
     hole_assignment = pomdp_sketch.family.pick_any()
@@ -138,8 +142,8 @@ def main():
     import numpy as np
     
     
-    
-    reward_model = pomdp.reward_models['rewardmodel_penalty']
+    print(pomdp.reward_models)
+    reward_model = pomdp.reward_models[reward_model_name]
     assert not reward_model.has_state_rewards
     state_action_rewards = reward_model.state_action_rewards
     print(state_action_rewards)
@@ -158,6 +162,8 @@ def main():
     
     target_label = pomdp_sketch.get_property().get_target_label()
     
+    print("Memory function parameters:", num_nodes * pomdp.nr_observations * num_nodes)
+    
     for state in pomdp.states:
         s = state.id
         o = pomdp.observations[s]
@@ -172,6 +178,7 @@ def main():
                 for n in range(num_nodes):
                     # if len(state.labels) > 0:
                     states.add(s * num_nodes + n)
+                    pmc_transitions[s * num_nodes + n] = {}
                     for label in state.labels:
                         labeling[label].append(s * num_nodes + n)
                     # if target_label in state.labels:
@@ -187,47 +194,96 @@ def main():
                         if act_tup in action_function_params:
                             act_param = action_function_params[act_tup]
                         else:
-                            p_a_name = f"p{counter}_n{n}_o{o}_a{a}"
-                            act_param = pycarl.Variable(p_a_name)
-                            # assert pycarl.variable_with_name(p_a_name).is_no_variable, (p_a_name, action_function_params)
+                            action_ids = [b.id for b in pomdp.states[s].actions]
+                            # if len(action_ids) > 1:
+                            if a == max(action_ids):
+                                # n, o, a = None
+                                act_param = pc.Rational(1)
+                                for a_ in action_ids:
+                                    if a != a_:
+                                        assert (n, o, a_) in action_function_params
+                                        act_param -= action_function_params[n, o, a_]
+                                # print("Var:", var, a, a_, [b for b in pomdp.states[s].actions][-1].id)
+                            else:
+                                p_a_name = f"p{counter}_n{n}_o{o}_a{a}"
+                                assert pycarl.variable_with_name(p_a_name).is_no_variable, (p_a_name, action_function_params)
+                                act_param = pycarl.Variable(p_a_name)
+                                counter += 1
+                            # else:
+                                # act_
+                                
                             action_function_params[act_tup] = act_param
-                            counter += 1
-                            
+                                
+
                         if mem_tup in memory_function_params:
                             mem_param = memory_function_params[mem_tup]
                         else:
-                            p_o_name = f"p{counter}_n{n}_o{o}_m{m}"
-                            mem_param = pycarl.Variable(p_o_name)
-                            # assert pycarl.variable_with_name(p_o_name).is_no_variable, (p_o_name, action_function_params)
-                            memory_function_params[mem_tup] = act_param
-                            counter += 1
-                        
+                            if m == num_nodes-1:
+                                # n, o, a = None
+                                mem_param = pc.Rational(1)
+                                for m_ in range(num_nodes):
+                                    if m != m_:
+                                        assert (n, o, m_) in memory_function_params
+                                        mem_param -= memory_function_params[n, o, m_]
+                                # print("Var:", mem_param, m, n, o, m_)
+                                # exit()
+                                memory_function_params[mem_tup] = mem_param
+                            else:
+                                p_o_name = f"p{counter}_n{n}_o{o}_m{m}"
+                                assert pycarl.variable_with_name(p_o_name).is_no_variable, (p_o_name, action_function_params)
+                                mem_param = pycarl.Variable(p_o_name)
+                                memory_function_params[mem_tup] = mem_param
+                                counter += 1
+
                         action_poly = pc.Polynomial(act_param)
                         mem_poly = pc.Polynomial(mem_param)
                         action_mem_poly = action_poly * mem_poly * pc.Rational(float(t_prob))
                         # num = pc.FactorizedPolynomial(action_mem_poly, pycarl.cln.cln._FactorizationCache())
-                        
+
                         # assert s * num_nodes + n < t * num_nodes + m
-                        if (s * num_nodes + n, t * num_nodes + m) in pmc_transitions:
-                            pmc_transitions[(s * num_nodes + n, t * num_nodes + m)] += action_mem_poly
+                        if (t * num_nodes + m) in pmc_transitions[s * num_nodes + n]:
+                            pmc_transitions[(s * num_nodes + n)][(t * num_nodes + m)] += action_mem_poly
                         else:
-                            pmc_transitions[(s * num_nodes + n, t * num_nodes + m)] = action_mem_poly
+                            pmc_transitions[(s * num_nodes + n)][(t * num_nodes + m)] = action_mem_poly
 
                     if s * num_nodes + n in rewards:
                         rewards[s * num_nodes + n] += pc.Polynomial(action_function_params[(n, o, a)]) * pc.Rational(float(reward))
                     else:
                         rewards[s * num_nodes + n] = pc.Polynomial(action_function_params[(n, o, a)]) * pc.Rational(float(reward))
     
+    resolution = {expr : pc.Rational(0.4) for key, expr in action_function_params.items() if isinstance(expr, pycarl.Variable)}
+    resolution.update({
+        expr : pc.Rational(0.4) for key, expr in memory_function_params.items() if isinstance(expr, pycarl.Variable)
+    })
     
+    print(resolution)
     
-    for (s, t), probability_function in sorted(pmc_transitions.items(), key = lambda x : x[0]):
-        print(s, t, probability_function)
-        builder.add_next_value(s, t, pc.FactorizedRationalFunction(pc.FactorizedPolynomial(probability_function, pycarl.cln.cln._FactorizationCache()), denom))
+    print("----")
+    for s, next_states in sorted(pmc_transitions.items(), key = lambda x : x[0]):
+        for t, probability_function in next_states.items():
+            # print(s, t, probability_function)
+            builder.add_next_value(s, t, pc.FactorizedRationalFunction(pc.FactorizedPolynomial(probability_function, pycarl.cln.cln._FactorizationCache()), denom))
+            print(s, t, float(probability_function.evaluate(resolution)))
+            # print(help(probability_function))
+            # exit()
+    print("----")
+    
+    # print(pmc_transitions)
+    # exit()
     
     for s in states:
+        print(f"sum_t(t | s={s})", sum([float(probability_function.evaluate(resolution)) for probability_function in pmc_transitions[s].values()]))
         rewards[s] = pc.FactorizedRationalFunction(pc.FactorizedPolynomial(rewards[s], pycarl.cln.cln._FactorizationCache()), denom)
                     
     p_matrix = builder.build()
+    
+    print(len(action_function_params), len(memory_function_params), counter)
+    
+    print("actfun dict:", action_function_params)
+    print("memfun dict:", memory_function_params)
+    # exit()
+    
+    # print("MC:", pmc_transitions)
     
     labelling = stormpy.storage.StateLabeling(len(states))
     
@@ -240,7 +296,7 @@ def main():
     
     pmc_reward_model = stormpy.storage.SparseParametricRewardModel(optional_state_reward_vector=[r for r in rewards.values()])
     
-    components = stormpy.storage.SparseParametricModelComponents(p_matrix, labelling, reward_models={"rewardmodel_penalty" : pmc_reward_model})
+    components = stormpy.storage.SparseParametricModelComponents(p_matrix, labelling, reward_models={reward_model_name : pmc_reward_model})
     
     pmc = stormpy.storage.SparseParametricDtmc(components)
     
@@ -253,7 +309,7 @@ def main():
     parameters : set = pmc.collect_all_parameters()
     print(f"There are currently {len(parameters)} parameters in the pMC!")
     print(len(action_function_params) + len(memory_function_params))
-    point = {p: stormpy.RationalRF(1/2) for p in parameters}
+    point = {p: stormpy.RationalRF(1/2 + 1e-6)  for p in parameters}
     env = stormpy.Environment()
     print(pmc.collect_all_parameters())
     # print(pmc.transition_matrix.get_row(0))
@@ -276,17 +332,21 @@ def main():
         # print(states)
     
     # assert len(pmc.collect_reward_parameters()) == 0, pmc.collect_reward_parameters()
+    
+    wrapper = payntbind.synthesis.GradientDescentInstantiationSearcherFamily(pmc)
+    wrapper.setup(env, synth_task)
+    wrapper.gradientDescent()
 
     checker = payntbind.synthesis.SparseDerivativeInstantiationModelCheckerFamily(pmc)
     checker.specifyFormula(env, task)
-    print(env, point, list(parameters)[12])
+    # print(env, point, list(parameters)[12])
     res = checker.check(env, point, list(point.keys())[0])
     print(res)
     print(res.at(0), res.get_values(), dir(res))
     
     exit()
 
-    wrapper = payntbind.synthesis.GradientDescentInstantiationSearcherFamily(pmc, learningRate=0.01)
+    wrapper = payntbind.synthesis.GradientDescentInstantiationSearcherFamily(pmc)
     wrapper.setup(env, synth_task)
     wrapper.gradientDescent()
     
