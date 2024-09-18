@@ -42,7 +42,7 @@ class GradientDescentInstantiationSearcherFamily {
      */
     GradientDescentInstantiationSearcherFamily(
         storm::models::sparse::Dtmc<FunctionType> const& model, GradientDescentMethod method = GradientDescentMethod::MOMENTUM_SIGN, ConstantType learningRate = 0.001,
-        ConstantType averageDecay = 0.9, ConstantType squaredAverageDecay = 0.999, uint_fast64_t miniBatchSize = 32, ConstantType terminationEpsilon = 1e-6,
+        ConstantType averageDecay = 0.9, ConstantType squaredAverageDecay = 0.999, uint_fast64_t miniBatchSize = 256, ConstantType terminationEpsilon = 1e-6,
         boost::optional<
             std::map<typename utility::parametric::VariableType<FunctionType>::type, typename utility::parametric::CoefficientType<FunctionType>::type>>
             startPoint = boost::none,

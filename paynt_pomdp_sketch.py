@@ -1,5 +1,6 @@
 # using Paynt for POMDP sketches
-
+import copy
+import operator
 import paynt.cli
 import paynt.parser.sketch
 import paynt.quotient.pomdp_family
@@ -109,21 +110,22 @@ def parameters_to_paynt_fsc(action_function_params, memory_function_params, reso
     
     return fsc
 
+storm_control = paynt.quotient.storm_pomdp_control.StormPOMDPControl()
+timeout = 30
+paynt_iter_timeout = 5
+storm_iter_timeout = 5
+iterative_storm = (timeout,paynt_iter_timeout,storm_iter_timeout)
+storm_control.set_options(
+    storm_options="cutoff", get_storm_result=None, iterative_storm=iterative_storm, use_storm_cutoffs=False,
+    unfold_strategy_storm="storm", prune_storm=False, export_fsc_storm=None, export_fsc_paynt=None
+)
+
 def solve_pomdp_saynt(pomdp, specification, k, timeout=1):
     pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, specification)
-    timeout = timeout
-    paynt_iter_timeout = 5
-    storm_iter_timeout = 5
-    iterative_storm = (timeout,paynt_iter_timeout,storm_iter_timeout)
-    storm_control = paynt.quotient.storm_pomdp_control.StormPOMDPControl()
-    storm_control.set_options(
-        storm_options="cutoff", get_storm_result=None, iterative_storm=iterative_storm, use_storm_cutoffs=False,
-        unfold_strategy_storm="storm", prune_storm=False, export_fsc_storm=None, export_fsc_paynt=None
-    )
     synthesizer = paynt.synthesizer.synthesizer.Synthesizer.choose_synthesizer(
-        pomdp_quotient, method="ar", fsc_synthesis=True, storm_control=storm_control
-    )
-    synthesizer.run(optimum_threshold=18)
+            pomdp_quotient, method="ar", fsc_synthesis=True, storm_control=storm_control
+        )
+    synthesizer.run(optimum_threshold=None)
     assignment = synthesizer.storm_control.latest_paynt_result
     assert assignment is not None
     fsc = pomdp_quotient.assignment_to_fsc(assignment)
@@ -145,7 +147,7 @@ def random_fsc(pomdp_sketch, num_nodes):
             fsc.update_function[n][z] = { n_new:1/num_nodes for n_new in range(num_nodes) }
     return fsc
 
-def experiment_on_subfamily(pomdp_sketch, num_nodes):
+def experiment_on_subfamily(pomdp_sketch, num_nodes, saynt=False, timeout=15):
     results = {}
     
     nO = pomdp_sketch.num_observations
@@ -160,11 +162,11 @@ def experiment_on_subfamily(pomdp_sketch, num_nodes):
             quotient_state = pomdp.quotient_state_map[state]
             assert pomdp.model.observations[state] == pomdp_sketch.state_to_observation[quotient_state]
         pomdp = pomdp.model
-        pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, pomdp_sketch.specification)
-        # current_pomdp = 
-        fsc = solve_pomdp_paynt(pomdp, pomdp_sketch.specification, num_nodes, timeout=5)
-        # fsc = solve_pomdp_saynt(pomdp, pomdp_sketch.specification, num_nodes, timeout=15) # GO OOM
-        # print(fsc.action_function, pomdp_sketch.observation_to_actions, pomdp_quotient.action_labels_at_observation, pomdp_sketch.action_labels)
+        if saynt:
+            fsc = solve_pomdp_saynt(pomdp, pomdp_sketch.specification, num_nodes, timeout=timeout) # GO OOM        
+        else:
+            fsc = solve_pomdp_paynt(pomdp, pomdp_sketch.specification, num_nodes, timeout=timeout)
+        
 
         for n in range(num_nodes):
             for o in range(nO):
@@ -194,8 +196,8 @@ def experiment_on_subfamily(pomdp_sketch, num_nodes):
         
     print(results)
 
-
-def construct_pmc(pomdp, pomdp_sketch, reward_model_name, num_nodes, initial_probability, action_function_params = {}, memory_function_params = {}, distinct_parameters_for_final_probability = False, sanity_checks = True):
+# @profile
+def construct_pmc(pomdp, pomdp_sketch, reward_model_name, num_nodes, action_function_params = {}, memory_function_params = {}, resolution = {}, distinct_parameters_for_final_probability = False, sanity_checks = True):
     pycarl.clear_pools()
     
     builder : stormpy.storage.storage.ParametricSparseMatrixBuilder = stormpy.storage.ParametricSparseMatrixBuilder()
@@ -268,6 +270,7 @@ def construct_pmc(pomdp, pomdp_sketch, reward_model_name, num_nodes, initial_pro
                                 p_a_name = f"p{counter}_n{n}_o{o}_a{quotient_action}"
                                 assert pycarl.variable_with_name(p_a_name).is_no_variable, (p_a_name, action_function_params)
                                 act_param = pycarl.Variable(p_a_name)
+                                resolution[act_param] = pc.Rational(1 / len(pomdp_sketch.observation_to_actions[o]) + 1e-6)
                                 counter += 1
                                 
                             action_function_params[act_tup] = act_param
@@ -287,6 +290,7 @@ def construct_pmc(pomdp, pomdp_sketch, reward_model_name, num_nodes, initial_pro
                                 p_o_name = f"p{counter}_n{n}_o{o}_m{m}"
                                 assert pycarl.variable_with_name(p_o_name).is_no_variable, (p_o_name, action_function_params)
                                 mem_param = pycarl.Variable(p_o_name)
+                                resolution[mem_param] = pc.Rational(1 / num_nodes + 1e-6)
                                 memory_function_params[mem_tup] = mem_param
                                 counter += 1
 
@@ -304,18 +308,20 @@ def construct_pmc(pomdp, pomdp_sketch, reward_model_name, num_nodes, initial_pro
                 else:
                     rewards[s * num_nodes + n] = pc.Polynomial(action_function_params[(n, o, quotient_action)]) * pc.Rational(float(reward))
     
-    resolution = {expr : pc.Rational(initial_probability) for key, expr in action_function_params.items() if isinstance(expr, pycarl.Variable)}
-    resolution.update({
-        expr : pc.Rational(initial_probability) for key, expr in memory_function_params.items() if isinstance(expr, pycarl.Variable)
-    })
+    # resolution = {expr : pc.Rational(initial_probability) for key, expr in action_function_params.items() if isinstance(expr, pycarl.Variable)}
+    # resolution.update({
+        # expr : pc.Rational(initial_probability) for key, expr in memory_function_params.items() if isinstance(expr, pycarl.Variable)
+    # })
+    
+    cache = pycarl.cln.cln._FactorizationCache()
 
     for s, next_states in sorted(pmc_transitions.items(), key = lambda x : x[0]):
         # BELOW EATS MEMORY
         # assert all([float(pc.FactorizedRationalFunction(pc.FactorizedPolynomial(probability_function, pycarl.cln.cln._FactorizationCache()), denom).evaluate(resolution)) > 0 and float(pc.FactorizedRationalFunction(pc.FactorizedPolynomial(probability_function, pycarl.cln.cln._FactorizationCache()), denom).evaluate(resolution)) <= 1 for probability_function in pmc_transitions[s].values()])
         # assert np.isclose(sum([float(pc.FactorizedRationalFunction(pc.FactorizedPolynomial(probability_function, pycarl.cln.cln._FactorizationCache()), denom).evaluate(resolution)) for probability_function in pmc_transitions[s].values()]), 1)
-        rewards[s] = pc.FactorizedRationalFunction(pc.FactorizedPolynomial(rewards[s], pycarl.cln.cln._FactorizationCache()), denom)
+        rewards[s] = pc.FactorizedRationalFunction(pc.FactorizedPolynomial(rewards[s], cache), denom)
         for t, probability_function in sorted(next_states.items(), key = lambda x : x[0]):
-            parametric_transition = pc.FactorizedRationalFunction(pc.FactorizedPolynomial(probability_function, pycarl.cln.cln._FactorizationCache()), denom)
+            parametric_transition = pc.FactorizedRationalFunction(pc.FactorizedPolynomial(probability_function, cache), denom)
             evaluation = float(parametric_transition.evaluate(resolution))
             builder.add_next_value(s, t, parametric_transition)
             assert parametric_transition.evaluate(resolution) > 0 and parametric_transition.evaluate(resolution) <= 1
@@ -373,6 +379,7 @@ def main():
     # load sketch
     project_path="models/pomdp/sketches/obstacles-10-2"
     # project_path="models/pomdp/sketches/avoid"
+    # project_path="models/pomdp/sketches/dpm"
     pomdp_sketch = load_sketch(project_path)
     
     nO = pomdp_sketch.num_observations
@@ -394,12 +401,16 @@ def main():
     
     Rmin = pomdp_sketch.get_property().minimizing
     
-    print(Rmin)
+    num_nodes = 2
     
     print(formula, pomdp_sketch.get_property().formula)
     
+    # experiment_on_subfamily(pomdp_sketch, 2, saynt=True, timeout=3)
     
-    num_nodes = 2
+    # exit()
+    
+    
+    
     
     # print()
     # exit()
@@ -407,15 +418,13 @@ def main():
     # print("form:", formula, type(formula), formula.comparison_type, formula.threshold)
     
     storm_pmc_construction = False
-    
-    max_actions_per_observation = max([len(pomdp_sketch.observation_to_actions[o]) for o in range(nO)])
 
     # fsc = solve_pomdp_paynt(pomdp, pomdp_sketch.specification, num_nodes)
     
-    initial_probability = 1 / max(max_actions_per_observation, num_nodes)
-    initial_probability = 0.1
+    # initial_probability = 1 / max(max([len(pomdp_sketch.observation_to_actions[o]) for o in range(nO)]), num_nodes)
+    # initial_probability = 0.1
     
-    print(initial_probability)
+    # print(initial_probability)
     # exit()
     
     use_softmax = False
@@ -435,12 +444,14 @@ def main():
         print(f"There are currently {len(parameters)} parameters in the pMC!")
         
         resolution = {
-            p : pc.Rational(initial_probability) for p in parameters
+            p : pc.Rational(max(max([len(pomdp_sketch.observation_to_actions[o]) for o in range(nO)]), num_nodes)) for p in parameters
         }
         
     else:
         
-        pmc, action_function_params, memory_function_params, resolution = construct_pmc(pomdp, pomdp_sketch, reward_model_name, num_nodes, initial_probability, distinct_parameters_for_final_probability=use_softmax)
+        pmc, action_function_params, memory_function_params, resolution = construct_pmc(pomdp, pomdp_sketch, reward_model_name, num_nodes, distinct_parameters_for_final_probability=use_softmax)
+        
+        gc.collect()
         
         action_function_params_no_const = {index : var for index, var in action_function_params.items() if isinstance(var, pycarl.Variable)}
         memory_function_params_no_const = {index : var for index, var in memory_function_params.items() if isinstance(var, pycarl.Variable)}
@@ -498,30 +509,53 @@ def main():
 
     # wrapper.resetDynamicValues()
     
+    print(len(resolution), len(pmc.collect_all_parameters()))
+    
+    current_value = None
+    
+    best_family_value = 1e30 if Rmin else -1e30
+    
+    best_fsc = random_fsc(pomdp_sketch, nO)
+    
     for i in range(num_iters // 10):
+        
+        artificial_upper_bound = None # if current_value is None else current_value * (0.9 if Rmin else 1.1)
         
         if True:
             fsc = parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, nO, pomdp_sketch.observation_to_actions)
             dtmc_sketch =  pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
             synthesizer = paynt.synthesizer.synthesizer_ar.SynthesizerAR(dtmc_sketch)
-            hole_assignment = synthesizer.run()
+            hole_assignment = synthesizer.synthesize(optimum_threshold=artificial_upper_bound, keep_optimum=True)
+            paynt_value = synthesizer.best_assignment_value
+            op = operator.lt if Rmin else operator.gt
+            if op(paynt_value, best_family_value):
+                best_fsc = fsc
+                best_family_value = paynt_value
+                
             # hole_assignment = pomdp_sketch.family.pick_random()
         else:
             hole_assignment = pomdp_sketch.family.pick_any()
         pomdp_class = pomdp_sketch.build_pomdp(hole_assignment)
         pomdp = pomdp_class.model
+
         # _ = solve_pomdp_paynt(pomdp, pomdp_sketch.specification, 2, timeout=10)
-        pmc, action_function_params, memory_function_params, _ = construct_pmc(pomdp, pomdp_sketch, reward_model_name, num_nodes, initial_probability, action_function_params=action_function_params, memory_function_params=memory_function_params)
-        instantiator = stormpy.pars.PDtmcInstantiator(pmc)
-        parameters = pmc.collect_all_parameters()
-        action_function_params_no_const = {index : var for index, var in action_function_params.items() if isinstance(var, pycarl.Variable)}
-        memory_function_params_no_const = {index : var for index, var in memory_function_params.items() if isinstance(var, pycarl.Variable)}
-        for p in pmc.collect_all_parameters():
-            assert p in action_function_params_no_const.values() or p in memory_function_params_no_const.values()
+        pmc, action_function_params, memory_function_params, _ = construct_pmc(pomdp, pomdp_sketch, reward_model_name, num_nodes, action_function_params=action_function_params, memory_function_params=memory_function_params)
+        
+        # instantiator = stormpy.pars.PDtmcInstantiator(pmc)
+        # parameters = pmc.collect_all_parameters()
+        # action_function_params_no_const = {index : var for index, var in action_function_params.items() if isinstance(var, pycarl.Variable)}
+        # memory_function_params_no_const = {index : var for index, var in memory_function_params.items() if isinstance(var, pycarl.Variable)}
+        # for p in pmc.collect_all_parameters():
+        #     assert p in action_function_params_no_const.values() or p in memory_function_params_no_const.values()
             
         wrapper = payntbind.synthesis.GradientDescentInstantiationSearcherFamily(pmc)
-        synth_task = payntbind.synthesis.FeasibilitySynthesisTask(formula.clone())
-        synth_task.set_bound(formula.comparison_type, formula.threshold_expr)
+        temp_form = formula.clone()
+        manager = stormpy.storage.ExpressionManager()
+        parsed = manager.create_integer(1 if Rmin else int(1e6))
+        temp_form.set_bound(stormpy.ComparisonType.LEQ if Rmin else stormpy.ComparisonType.GEQ,  parsed)
+        temp_form.remove_optimality_type()
+        synth_task = payntbind.synthesis.FeasibilitySynthesisTask(temp_form)
+        synth_task.set_bound(stormpy.ComparisonType.LEQ if Rmin else stormpy.ComparisonType.GEQ,  parsed)
         wrapper.setup(env, synth_task)
         wrapper.resetDynamicValues()
         
@@ -529,11 +563,19 @@ def main():
         
         values.append(values)
         
-        print(i, current_value)
+        print(i, current_value, "previous best:", best_family_value)
         
         resolution = new_resolution
     
+    print(best_fsc)
+    
+    exit()
+    
     for i in range(num_iters):  
+        
+        artificial_upper_bound = None if current_value is None else current_value * (1.1 if Rmin else 0.9)
+        
+        new_resolution = {}
         
         if i % 10 == 0:
             if i > 0:
@@ -541,14 +583,14 @@ def main():
                 # print(fsc)
                 dtmc_sketch =  pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
                 synthesizer = paynt.synthesizer.synthesizer_ar.SynthesizerAR(dtmc_sketch)
-                hole_assignment = synthesizer.run()
+                hole_assignment = synthesizer.run(optimum_threshold=artificial_upper_bound)
                 # hole_assignment = pomdp_sketch.family.pick_random()
             else:
                 hole_assignment = pomdp_sketch.family.pick_any()
             # print(hole_assignment)
             pomdp_class = pomdp_sketch.build_pomdp(hole_assignment)
             pomdp = pomdp_class.model
-            pmc, action_function_params, memory_function_params, _ = construct_pmc(pomdp, pomdp_sketch, reward_model_name, num_nodes, initial_probability, action_function_params=action_function_params, memory_function_params=memory_function_params)
+            pmc, action_function_params, memory_function_params, _ = construct_pmc(pomdp, pomdp_sketch, reward_model_name, num_nodes, action_function_params=action_function_params, memory_function_params=memory_function_params, new_resolution=new_resolution)
             # print(action_function_params)
             instantiator = stormpy.pars.PDtmcInstantiator(pmc)
             parameters = pmc.collect_all_parameters()
@@ -559,8 +601,8 @@ def main():
         
         instantiated_model = instantiator.instantiate(resolution)
         result = stormpy.model_checking(instantiated_model, formula)
-        current_dtmc_value = result.as_explicit_quantitative().at(0)
-        print(f"I{i}. POMDP={hole_assignment}. RESULT:", current_dtmc_value)
+        current_value = result.as_explicit_quantitative().at(0)
+        print(f"I{i}. POMDP={hole_assignment}. RESULT:", current_value)
 
         new_resolution = {}
         

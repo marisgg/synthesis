@@ -394,6 +394,8 @@ std::pair<ConstantType, std::map<typename utility::parametric::VariableType<Func
             STORM_LOG_WARN("Aborting Gradient Descent, returning non-optimal value.");
             break;
         }
+
+        std::cout << stepNum << " : " << currentValue << std::endl;
     }
     this->assignments = position;
     return std::make_pair(currentValue, position);
