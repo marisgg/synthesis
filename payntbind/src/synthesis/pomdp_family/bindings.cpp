@@ -87,14 +87,16 @@ void bindings_pomdp_family(py::module& m) {
         // }))
 
         // .def_property("derivativeEvaluationHelper", [](storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>& solver) {return solver.derivativeEvaluationHelper;})
-        // .def_property("parameters", [](storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>& solver) {return solver.parameters;})
+        // .def_property("assignments", [](storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>& solver) {return solver.assignments;})
+        // .def_property("assignments", &storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>::assignments)
 
         .def("setup", &storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>::setup)
         .def("gradientDescent", &storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>::gradientDescent)
         .def("stochasticGradientDescent", &storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>::stochasticGradientDescent)
         // .def("stochasticGradientDescent", [] (
             // storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>& der,
-            // std::map<VariableType<storm::RationalFunction>, CoefficientType<storm::RationalFunction>>& position
+            // // std::map<storm::RationalFunction, storm::utility::parametric::CoefficientType<storm::RationalFunction>>& position
+            // std::map<storm::utility::parametric::VariableType<storm::RationalFunction>, storm::utility::parametric::CoefficientType<storm::RationalFunction>>& position
         // ) { return der.stochasticGradientDescent(position);})
         .def("resetDynamicValues", &storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>::resetDynamicValues)
         ;

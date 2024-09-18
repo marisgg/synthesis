@@ -77,7 +77,11 @@ class Property:
         rf = prop.raw_formula
 
         # use comparison type to deduce optimizing direction
+        # print(dir(rf))
+        # assert rf.has_optimality_type
+        # exit()
         comparison_type = rf.comparison_type
+        # print(comparison_type)
         self.minimizing = comparison_type in [stormpy.ComparisonType.LESS, stormpy.ComparisonType.LEQ]
         self.op = {
             stormpy.ComparisonType.LESS:    operator.lt,

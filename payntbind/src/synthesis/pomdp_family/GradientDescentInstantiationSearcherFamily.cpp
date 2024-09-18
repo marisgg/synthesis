@@ -214,7 +214,7 @@ ConstantType GradientDescentInstantiationSearcherFamily<FunctionType, ConstantTy
 // }
 
 template<typename FunctionType, typename ConstantType>
-ConstantType GradientDescentInstantiationSearcherFamily<FunctionType, ConstantType>::stochasticGradientDescent(
+std::pair<ConstantType, std::map<typename utility::parametric::VariableType<FunctionType>::type, typename utility::parametric::CoefficientType<FunctionType>::type>> GradientDescentInstantiationSearcherFamily<FunctionType, ConstantType>::stochasticGradientDescent(
     std::map<VariableType<FunctionType>, CoefficientType<FunctionType>>& position) {
     uint_fast64_t initialStateModel = model.getStates("init").getNextSetIndex(0);
 
@@ -395,7 +395,8 @@ ConstantType GradientDescentInstantiationSearcherFamily<FunctionType, ConstantTy
             break;
         }
     }
-    return currentValue;
+    this->assignments = position;
+    return std::make_pair(currentValue, position);
 }
 
 template<typename FunctionType, typename ConstantType>
@@ -453,7 +454,7 @@ GradientDescentInstantiationSearcherFamily<FunctionType, ConstantType>::gradient
 
         stochasticWatch.start();
         STORM_PRINT_AND_LOG("Starting at " << point << "\n");
-        ConstantType prob = stochasticGradientDescent(point);
+        ConstantType prob = stochasticGradientDescent(point).first;
         stochasticWatch.stop();
 
         bool isFoundPointBetter = false;

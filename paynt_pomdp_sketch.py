@@ -54,7 +54,8 @@ def assignment_to_pomdp(pomdp_sketch, assignment):
             observation_action_to_true_action[obs][action] = true_action
     return pomdp,observation_action_to_true_action
 
-def solve_pomdp_paynt(pomdp_quotient, specification, k, timeout=1):
+def solve_pomdp_paynt(pomdp, specification, k, timeout=1):
+    pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, specification)
     pomdp_quotient.set_imperfect_memory_size(k)
     print(dir(pomdp_quotient), pomdp_quotient.action_labels_at_observation[0])#, pomdp_quotient.action_labels)
     synthesizer = paynt.synthesizer.synthesizer_ar.SynthesizerAR(pomdp_quotient)
@@ -161,7 +162,7 @@ def experiment_on_subfamily(pomdp_sketch, num_nodes):
         pomdp = pomdp.model
         pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, pomdp_sketch.specification)
         # current_pomdp = 
-        fsc = solve_pomdp_paynt(pomdp_quotient, pomdp_sketch.specification, num_nodes, timeout=5)
+        fsc = solve_pomdp_paynt(pomdp, pomdp_sketch.specification, num_nodes, timeout=5)
         # fsc = solve_pomdp_saynt(pomdp, pomdp_sketch.specification, num_nodes, timeout=15) # GO OOM
         # print(fsc.action_function, pomdp_sketch.observation_to_actions, pomdp_quotient.action_labels_at_observation, pomdp_sketch.action_labels)
 
@@ -370,11 +371,13 @@ def main():
     paynt.cli.setup_logger()
 
     # load sketch
-    # project_path="models/pomdp/sketches/obstacles-10-2"
-    project_path="models/pomdp/sketches/avoid"
+    project_path="models/pomdp/sketches/obstacles-10-2"
+    # project_path="models/pomdp/sketches/avoid"
     pomdp_sketch = load_sketch(project_path)
     
     nO = pomdp_sketch.num_observations
+    
+    print(pomdp_sketch.get_property().copy())
     
     reward_model_name = pomdp_sketch.get_property().get_reward_name()
 
@@ -396,9 +399,10 @@ def main():
     print(formula, pomdp_sketch.get_property().formula)
     
     
-    num_nodes = 1
+    num_nodes = 2
     
-    task = stormpy.ParametricCheckTask(pomdp_sketch.get_property().formula, only_initial_states=False)
+    # print()
+    # exit()
     
     # print("form:", formula, type(formula), formula.comparison_type, formula.threshold)
     
@@ -470,20 +474,7 @@ def main():
     current_dtmc_value = result.at(0)
     print("RESULT:", result, current_dtmc_value, type(result))
     
-    checker = payntbind.synthesis.SparseDerivativeInstantiationModelCheckerFamily(pmc) 
-    checker.specifyFormula(env, task)
-    
-    wrapper = payntbind.synthesis.GradientDescentInstantiationSearcherFamily(pmc)
-    synth_task = payntbind.synthesis.FeasibilitySynthesisTask(formula)
-    synth_task.set_bound(formula.comparison_type, formula.threshold_expr)
-    wrapper.setup(env, synth_task)
-    wrapper.resetDynamicValues()
-    # wrapper.gradientDescent()
-    print(resolution)
-    wrapper.stochasticGradientDescent(resolution)
-    print(wrapper.point)
-    print(resolution)
-    exit()
+
     
     def sign(x):
         if np.isclose(x, 0):
@@ -492,6 +483,55 @@ def main():
             return 1 if x > 0 else -1
         
     num_iters = 1000
+    
+    # best_current_value = math("inf") if Rmin else math("-inf")
+    
+    values = []
+    
+    print(pomdp_sketch.get_property())
+    
+    print(pomdp_sketch.get_property().copy())
+    
+    task = stormpy.ParametricCheckTask(pomdp_sketch.get_property().formula, only_initial_states=False)
+    checker = payntbind.synthesis.SparseDerivativeInstantiationModelCheckerFamily(pmc) 
+    checker.specifyFormula(env, task)
+
+    # wrapper.resetDynamicValues()
+    
+    for i in range(num_iters // 10):
+        
+        if True:
+            fsc = parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, nO, pomdp_sketch.observation_to_actions)
+            dtmc_sketch =  pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
+            synthesizer = paynt.synthesizer.synthesizer_ar.SynthesizerAR(dtmc_sketch)
+            hole_assignment = synthesizer.run()
+            # hole_assignment = pomdp_sketch.family.pick_random()
+        else:
+            hole_assignment = pomdp_sketch.family.pick_any()
+        pomdp_class = pomdp_sketch.build_pomdp(hole_assignment)
+        pomdp = pomdp_class.model
+        # _ = solve_pomdp_paynt(pomdp, pomdp_sketch.specification, 2, timeout=10)
+        pmc, action_function_params, memory_function_params, _ = construct_pmc(pomdp, pomdp_sketch, reward_model_name, num_nodes, initial_probability, action_function_params=action_function_params, memory_function_params=memory_function_params)
+        instantiator = stormpy.pars.PDtmcInstantiator(pmc)
+        parameters = pmc.collect_all_parameters()
+        action_function_params_no_const = {index : var for index, var in action_function_params.items() if isinstance(var, pycarl.Variable)}
+        memory_function_params_no_const = {index : var for index, var in memory_function_params.items() if isinstance(var, pycarl.Variable)}
+        for p in pmc.collect_all_parameters():
+            assert p in action_function_params_no_const.values() or p in memory_function_params_no_const.values()
+            
+        wrapper = payntbind.synthesis.GradientDescentInstantiationSearcherFamily(pmc)
+        synth_task = payntbind.synthesis.FeasibilitySynthesisTask(formula.clone())
+        synth_task.set_bound(formula.comparison_type, formula.threshold_expr)
+        wrapper.setup(env, synth_task)
+        wrapper.resetDynamicValues()
+        
+        current_value, new_resolution = wrapper.stochasticGradientDescent(resolution)
+        
+        values.append(values)
+        
+        print(i, current_value)
+        
+        resolution = new_resolution
     
     for i in range(num_iters):  
         

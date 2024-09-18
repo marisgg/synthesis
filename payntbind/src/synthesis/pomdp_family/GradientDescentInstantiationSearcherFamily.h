@@ -188,7 +188,7 @@ class GradientDescentInstantiationSearcherFamily {
     std::set<typename utility::parametric::VariableType<FunctionType>::type> parameters;
     const std::unique_ptr<storm::derivative::SparseDerivativeInstantiationModelCheckerFamily<FunctionType, ConstantType>> derivativeEvaluationHelper;
 
-    ConstantType stochasticGradientDescent(
+    std::pair<ConstantType, std::map<typename utility::parametric::VariableType<FunctionType>::type, typename utility::parametric::CoefficientType<FunctionType>::type>> stochasticGradientDescent(
         std::map<typename utility::parametric::VariableType<FunctionType>::type, typename utility::parametric::CoefficientType<FunctionType>::type>& position);
     ConstantType doStep(
         typename utility::parametric::VariableType<FunctionType>::type steppingParameter,
@@ -196,6 +196,8 @@ class GradientDescentInstantiationSearcherFamily {
         const std::map<typename utility::parametric::VariableType<FunctionType>::type, ConstantType>& gradient, uint_fast64_t stepNum);
 
     void resetDynamicValues();
+
+    std::map<typename utility::parametric::VariableType<FunctionType>::type, typename utility::parametric::CoefficientType<FunctionType>::type> assignments;
 
    private:
     Environment env;
