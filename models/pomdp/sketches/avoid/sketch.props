@@ -1,2 +1,2 @@
-R{"penalty"}min=? [ F goal ];
-//R{"penalty"}<=100 [ F goal ];
+//R{"penalty"}min=? [ F goal ];
+R{"penalty"}<=100 [ F goal ];

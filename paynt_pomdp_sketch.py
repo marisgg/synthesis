@@ -112,7 +112,7 @@ def solve_pomdp_saynt(pomdp, specification, k, timeout=1):
     pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, specification)
     timeout = timeout
     paynt_iter_timeout = 5
-    storm_iter_timeout = 2
+    storm_iter_timeout = 5
     iterative_storm = (timeout,paynt_iter_timeout,storm_iter_timeout)
     storm_control = paynt.quotient.storm_pomdp_control.StormPOMDPControl()
     storm_control.set_options(
@@ -122,7 +122,7 @@ def solve_pomdp_saynt(pomdp, specification, k, timeout=1):
     synthesizer = paynt.synthesizer.synthesizer.Synthesizer.choose_synthesizer(
         pomdp_quotient, method="ar", fsc_synthesis=True, storm_control=storm_control
     )
-    synthesizer.run(optimum_threshold=None)
+    synthesizer.run(optimum_threshold=18)
     assignment = synthesizer.storm_control.latest_paynt_result
     assert assignment is not None
     fsc = pomdp_quotient.assignment_to_fsc(assignment)
@@ -143,6 +143,55 @@ def random_fsc(pomdp_sketch, num_nodes):
             actions = pomdp_sketch.observation_to_actions[z]
             fsc.update_function[n][z] = { n_new:1/num_nodes for n_new in range(num_nodes) }
     return fsc
+
+def experiment_on_subfamily(pomdp_sketch, num_nodes):
+    results = {}
+    
+    nO = pomdp_sketch.num_observations
+    
+    hole_combinations = random.choices(list(pomdp_sketch.family.all_combinations()),k = 10)
+    hole_assignments_to_test = [pomdp_sketch.family.construct_assignment(hole_combination) for hole_combination in hole_combinations]
+    
+    for i, assignment in enumerate(hole_assignments_to_test):
+        pomdp = pomdp_sketch.build_pomdp(assignment)
+        # assert that observation classes are preserved
+        for state in range(pomdp.model.nr_states):
+            quotient_state = pomdp.quotient_state_map[state]
+            assert pomdp.model.observations[state] == pomdp_sketch.state_to_observation[quotient_state]
+        pomdp = pomdp.model
+        pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, pomdp_sketch.specification)
+        # current_pomdp = 
+        fsc = solve_pomdp_paynt(pomdp_quotient, pomdp_sketch.specification, num_nodes, timeout=5)
+        # fsc = solve_pomdp_saynt(pomdp, pomdp_sketch.specification, num_nodes, timeout=15) # GO OOM
+        # print(fsc.action_function, pomdp_sketch.observation_to_actions, pomdp_quotient.action_labels_at_observation, pomdp_sketch.action_labels)
+
+        for n in range(num_nodes):
+            for o in range(nO):
+                if o >= len(fsc.action_function[n]):
+                    fsc.action_function[n].append({a : 1 / len(pomdp_sketch.observation_to_actions[o]) for a in pomdp_sketch.observation_to_actions[o]})
+                    fsc.update_function[n].append({m : 1 / num_nodes for m in range(num_nodes)})
+                else:
+                    a = fsc.action_function[n][o]
+                    action_label = fsc.action_labels[a]
+                    family_action = pomdp_sketch.action_labels.index(action_label)
+                    assert family_action in pomdp_sketch.observation_to_actions[o]
+                    fsc.action_function[n][o] = {family_action : 1.0}
+                    fsc.update_function[n][o] = {fsc.update_function[n][o] : 1.0}
+
+        assert all([len(fsc.action_function[n]) == nO for n in range(num_nodes)])
+        fsc.is_deterministic = False
+        fsc.num_observations = nO
+        
+        dtmc_sketch = pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
+        one_by_one = paynt.synthesizer.synthesizer_onebyone.SynthesizerOneByOne(dtmc_sketch)
+        evaluations = {}
+        for j, family in enumerate(hole_assignments_to_test):
+            evaluations[j] = one_by_one.evaluate(family, keep_value_only=True)
+            
+        print(evaluations)
+        results[assignment] = (fsc, evaluations)
+        
+    print(results)
 
 
 def construct_pmc(pomdp, pomdp_sketch, reward_model_name, num_nodes, initial_probability, action_function_params = {}, memory_function_params = {}, distinct_parameters_for_final_probability = False, sanity_checks = True):
@@ -347,38 +396,7 @@ def main():
     print(formula, pomdp_sketch.get_property().formula)
     
     
-    num_nodes = 2
-    
-    results = {}
-    
-    for i, hole_combination in enumerate(pomdp_sketch.family.all_combinations()):
-        # print(hole_combination)
-        assignment = pomdp_sketch.family.construct_assignment(hole_combination)
-        pomdp = pomdp_sketch.build_pomdp(assignment).model
-        pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, pomdp_sketch.specification)
-        # current_pomdp = 
-        fsc = solve_pomdp_paynt(pomdp_quotient, pomdp_sketch.specification, num_nodes, timeout=2)
-        print(fsc.action_function, pomdp_sketch.observation_to_actions, pomdp_quotient.action_labels_at_observation, pomdp_sketch.action_labels)
-
-        for n in range(num_nodes):
-            for o in range(len(fsc.action_function[n])):
-                if len(pomdp_quotient.action_labels_at_observation[o]) == 1: continue
-                a = fsc.action_function[n][o]
-                strings = pomdp_quotient.action_labels_at_observation[o]
-                print(a, strings, pomdp_sketch.action_labels, pomdp_quotient.actions_at_observation[o])
-                print(dir(pomdp_quotient))
-                exit()
-                
-                
-        # print([pomdp_sketch.action_labels.index(action_string) for action_string in ])
-        fsc.action_function = [[pomdp_sketch.observation_to_actions[o][fsc.action_function[n][o]] for o in range(len(fsc.action_function[n]))] for n in range(num_nodes)]
-        dtmc_sketch = pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
-        one_by_one = paynt.synthesizer.synthesizer_onebyone.SynthesizerOneByOne(dtmc_sketch)
-        evaluation = one_by_one.evaluate_all(dtmc_sketch, formula, keep_value_only=True)
-        print(evaluation)
-        results[hole_assignment] = (fsc, evaluation)
-        
-    print(results)
+    num_nodes = 1
     
     task = stormpy.ParametricCheckTask(pomdp_sketch.get_property().formula, only_initial_states=False)
     
@@ -449,17 +467,23 @@ def main():
     env = stormpy.Environment()
     instantiated_model = instantiator.instantiate(resolution)
     result = stormpy.model_checking(instantiated_model, formula)
-    current_dtmc_value = result.as_explicit_quantitative().at(0)
+    current_dtmc_value = result.at(0)
     print("RESULT:", result, current_dtmc_value, type(result))
     
     checker = payntbind.synthesis.SparseDerivativeInstantiationModelCheckerFamily(pmc) 
     checker.specifyFormula(env, task)
     
     wrapper = payntbind.synthesis.GradientDescentInstantiationSearcherFamily(pmc)
-    # synth_task = payntbind.synthesis.FeasibilitySynthesisTask(formula)
-    # synth_task.set_bound(formula.comparison_type, formula.threshold_expr)
-    # wrapper.setup(env, synth_task)
+    synth_task = payntbind.synthesis.FeasibilitySynthesisTask(formula)
+    synth_task.set_bound(formula.comparison_type, formula.threshold_expr)
+    wrapper.setup(env, synth_task)
+    wrapper.resetDynamicValues()
     # wrapper.gradientDescent()
+    print(resolution)
+    wrapper.stochasticGradientDescent(resolution)
+    print(wrapper.point)
+    print(resolution)
+    exit()
     
     def sign(x):
         if np.isclose(x, 0):

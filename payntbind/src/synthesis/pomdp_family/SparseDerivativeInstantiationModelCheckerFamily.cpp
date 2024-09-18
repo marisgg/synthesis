@@ -32,6 +32,8 @@ using VariableType = typename utility::parametric::VariableType<FunctionType>::t
 template<typename FunctionType>
 using CoefficientType = typename utility::parametric::CoefficientType<FunctionType>::type;
 
+
+
 template<typename FunctionType, typename ConstantType>
 std::shared_ptr<modelchecker::ExplicitQuantitativeCheckResult<ConstantType>> SparseDerivativeInstantiationModelCheckerFamily<FunctionType, ConstantType>::check(
     Environment const& env, storm::utility::parametric::Valuation<FunctionType> const& valuation, VariableType<FunctionType> const& parameter,
@@ -165,9 +167,6 @@ void SparseDerivativeInstantiationModelCheckerFamily<FunctionType, ConstantType>
         }
     }
     initialStateModel = model.getStates("init").getNextSetIndex(0);
-
-    STORM_PRINT_AND_LOG("TESTAST123" << std::endl);
-    STORM_PRINT_AND_LOG(initialStateModel << std::endl);
 
     if (!checkTask.getFormula().isRewardOperatorFormula()) {
         next = target;

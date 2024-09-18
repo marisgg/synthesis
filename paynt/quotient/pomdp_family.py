@@ -78,14 +78,13 @@ class PomdpFamilyQuotient(paynt.quotient.mdp_family.MdpFamilyQuotient):
         # create the product
         fsc.check_action_function(self.observation_to_actions)
 
-        
         self.fsc_unfolder = payntbind.synthesis.FscUnfolder(
             self.quotient_mdp, self.state_to_observation, self.num_actions, self.choice_to_action
         )
         self.fsc_unfolder.apply_fsc(fsc.action_function, fsc.update_function)
         product = self.fsc_unfolder.product
         product_choice_to_choice = self.fsc_unfolder.product_choice_to_choice
-
+        
         # the product inherits the design space
         product_family = self.family.copy()
         
@@ -101,6 +100,8 @@ class PomdpFamilyQuotient(paynt.quotient.mdp_family.MdpFamilyQuotient):
                 hole_options = [(hole,option) for hole,option in choice_to_hole_assignment[choice]]
             product_choice_to_hole_options.append(hole_options)
         product_coloring = payntbind.synthesis.Coloring(product_family.family, product.nondeterministic_choice_indices, product_choice_to_hole_options)
+        
+        print(3)
         
         # copy the specification
         product_specification = self.specification.copy()

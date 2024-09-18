@@ -91,6 +91,12 @@ void bindings_pomdp_family(py::module& m) {
 
         .def("setup", &storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>::setup)
         .def("gradientDescent", &storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>::gradientDescent)
+        .def("stochasticGradientDescent", &storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>::stochasticGradientDescent)
+        // .def("stochasticGradientDescent", [] (
+            // storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>& der,
+            // std::map<VariableType<storm::RationalFunction>, CoefficientType<storm::RationalFunction>>& position
+        // ) { return der.stochasticGradientDescent(position);})
+        .def("resetDynamicValues", &storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>::resetDynamicValues)
         ;
 
 }

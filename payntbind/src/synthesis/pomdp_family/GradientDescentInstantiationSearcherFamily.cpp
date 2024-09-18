@@ -172,6 +172,7 @@ ConstantType GradientDescentInstantiationSearcherFamily<FunctionType, ConstantTy
         } else {
             step = momentum->learningRate * projectedGradient;
         }
+        // std::cout << "WRONG?" << std::endl;
         step += momentum->momentumTerm * momentum->pastStep.at(steppingParameter);
         momentum->pastStep[steppingParameter] = step;
     } else if (Nesterov* nesterov = boost::get<Nesterov>(&gradientDescentType)) {
@@ -186,6 +187,7 @@ ConstantType GradientDescentInstantiationSearcherFamily<FunctionType, ConstantTy
         } else {
             step = nesterov->learningRate * projectedGradient;
         }
+        // std::cout << "WRONG!!!!?" << std::endl;
         step += nesterov->momentumTerm * nesterov->pastStep.at(steppingParameter);
         nesterov->pastStep[steppingParameter] = step;
     } else {
@@ -204,6 +206,13 @@ ConstantType GradientDescentInstantiationSearcherFamily<FunctionType, ConstantTy
     return utility::abs<ConstantType>(oldPosAsConstant - utility::convertNumber<ConstantType>(position[steppingParameter]));
 }
 
+// template<typename FunctionType, typename ConstantType>
+// std::pair<ConstantType, std::map<VariableType<FunctionType>, CoefficientType<FunctionType>>> GradientDescentInstantiationSearcherFamily<FunctionType, ConstantType>::stochasticGradientDescentReturnParams(
+//     std::map<VariableType<FunctionType>, CoefficientType<FunctionType>>& position) {
+//     ConstantType values = this->stochasticGradientDescent(position);
+
+// }
+
 template<typename FunctionType, typename ConstantType>
 ConstantType GradientDescentInstantiationSearcherFamily<FunctionType, ConstantType>::stochasticGradientDescent(
     std::map<VariableType<FunctionType>, CoefficientType<FunctionType>>& position) {
@@ -221,6 +230,8 @@ ConstantType GradientDescentInstantiationSearcherFamily<FunctionType, ConstantTy
             break;
     }
 
+    // STORM_PRINT("1\n");
+
     // We count the number of iterations where the value changes less than the threshold, and terminate if it is large enough.
     uint64_t tinyChangeIterations = 0;
 
@@ -231,13 +242,15 @@ ConstantType GradientDescentInstantiationSearcherFamily<FunctionType, ConstantTy
         parameterEnumeration.push_back(parameter);
     }
 
+    // STORM_PRINT("2\n");
+
     utility::Stopwatch printUpdateStopwatch;
     printUpdateStopwatch.start();
 
     // The index to keep track of what parameter(s) to consider next.
     // The "mini-batch", so the parameters to consider, are parameterNum..parameterNum+miniBatchSize-1
     uint_fast64_t parameterNum = 0;
-    for (uint_fast64_t stepNum = 0; true; ++stepNum) {
+    for (uint_fast64_t stepNum = 0; stepNum < 10; ++stepNum) {
         if (printUpdateStopwatch.getTimeInSeconds() >= 15) {
             printUpdateStopwatch.restart();
             STORM_PRINT_AND_LOG("Currently at " << currentValue << "\n");
@@ -298,6 +311,8 @@ ConstantType GradientDescentInstantiationSearcherFamily<FunctionType, ConstantTy
             }
         }
 
+        // STORM_PRINT("3\n");
+
         if (computeValue) {
             std::unique_ptr<storm::modelchecker::CheckResult> intermediateResult = instantiationModelChecker->check(env, nesterovPredictedPosition);
             std::vector<ConstantType> valueVector = intermediateResult->asExplicitQuantitativeCheckResult<ConstantType>().getValueVector();
@@ -325,8 +340,6 @@ ConstantType GradientDescentInstantiationSearcherFamily<FunctionType, ConstantTy
             for (auto const& parameter : miniBatch) {
                 auto checkResult = derivativeEvaluationHelper->check(env, nesterovPredictedPosition, parameter, valueVector);
                 ConstantType delta = checkResult->getValueVector()[derivativeEvaluationHelper->getInitialState()];
-                STORM_PRINT_AND_LOG("TESTSTSTST!!!!!");
-                STORM_PRINT_AND_LOG(derivativeEvaluationHelper->getInitialState());
                 if (synthesisTask->getBound().comparisonType == logic::ComparisonType::Less ||
                     synthesisTask->getBound().comparisonType == logic::ComparisonType::LessEqual) {
                     delta = -delta;
@@ -350,6 +363,8 @@ ConstantType GradientDescentInstantiationSearcherFamily<FunctionType, ConstantTy
             walk.push_back(point);
         }
 
+        // STORM_PRINT("4\n");
+
         // Perform the step. The actualChange is the change in position the step caused. This is different from the
         // delta in multiple ways: First, it's multiplied with the learning rate and stuff. Second, if the current value
         // is at epsilon, and the delta would step out of the constrained which is then corrected, the actualChange is the
@@ -357,6 +372,8 @@ ConstantType GradientDescentInstantiationSearcherFamily<FunctionType, ConstantTy
         for (auto const& parameter : miniBatch) {
             doStep(parameter, position, deltaVector, stepNum);
         }
+
+        // STORM_PRINT("5\n");
 
         if (storm::utility::abs<ConstantType>(oldValue - currentValue) < terminationEpsilon) {
             tinyChangeIterations += miniBatch.size();
@@ -411,8 +428,7 @@ GradientDescentInstantiationSearcherFamily<FunctionType, ConstantType>::gradient
     while (true) {
         STORM_PRINT_AND_LOG("Trying out a new starting point\n");
         if (initialGuess) {
-            STORM_PRINT_AND_LOG("Trying initial guess (p->0.3 for every parameter p or set start point)\n");
-            STORM_PRINT_AND_LOG("Are you ignoring me?");
+            STORM_PRINT_AND_LOG("Trying initial guess (p->0.1 for every parameter p or set start point)\n");
         }
         // Generate random starting point
         for (auto const& param : this->parameters) {
@@ -421,7 +437,7 @@ GradientDescentInstantiationSearcherFamily<FunctionType, ConstantType>::gradient
                 if (startPoint) {
                     point[param] = (*startPoint)[param];
                 } else {
-                    point[param] = utility::convertNumber<CoefficientType<FunctionType>>(0.3 + 1e-6);
+                    point[param] = utility::convertNumber<CoefficientType<FunctionType>>(0.1 + 1e-6);
                 }
             } else if (!initialGuess && constraintMethod == GradientDescentConstraintMethod::BARRIER_LOGARITHMIC &&
                        logarithmicBarrierTerm > utility::convertNumber<ConstantType>(0.00001)) {

@@ -41,7 +41,7 @@ class GradientDescentInstantiationSearcherFamily {
      * using the printRunAsJson function
      */
     GradientDescentInstantiationSearcherFamily(
-        storm::models::sparse::Dtmc<FunctionType> const& model, GradientDescentMethod method = GradientDescentMethod::ADAM, ConstantType learningRate = 0.1,
+        storm::models::sparse::Dtmc<FunctionType> const& model, GradientDescentMethod method = GradientDescentMethod::MOMENTUM_SIGN, ConstantType learningRate = 0.001,
         ConstantType averageDecay = 0.9, ConstantType squaredAverageDecay = 0.999, uint_fast64_t miniBatchSize = 32, ConstantType terminationEpsilon = 1e-6,
         boost::optional<
             std::map<typename utility::parametric::VariableType<FunctionType>::type, typename utility::parametric::CoefficientType<FunctionType>::type>>
@@ -188,9 +188,16 @@ class GradientDescentInstantiationSearcherFamily {
     std::set<typename utility::parametric::VariableType<FunctionType>::type> parameters;
     const std::unique_ptr<storm::derivative::SparseDerivativeInstantiationModelCheckerFamily<FunctionType, ConstantType>> derivativeEvaluationHelper;
 
-   private:
+    ConstantType stochasticGradientDescent(
+        std::map<typename utility::parametric::VariableType<FunctionType>::type, typename utility::parametric::CoefficientType<FunctionType>::type>& position);
+    ConstantType doStep(
+        typename utility::parametric::VariableType<FunctionType>::type steppingParameter,
+        std::map<typename utility::parametric::VariableType<FunctionType>::type, typename utility::parametric::CoefficientType<FunctionType>::type>& position,
+        const std::map<typename utility::parametric::VariableType<FunctionType>::type, ConstantType>& gradient, uint_fast64_t stepNum);
+
     void resetDynamicValues();
 
+   private:
     Environment env;
     std::shared_ptr<storm::pars::FeasibilitySynthesisTask const> synthesisTask;
     std::unique_ptr<modelchecker::CheckTask<storm::logic::Formula, FunctionType>> currentCheckTaskNoBound;
@@ -249,13 +256,6 @@ class GradientDescentInstantiationSearcherFamily {
     bool useSignsOnly;
 
     ConstantType logarithmicBarrierTerm;
-
-    ConstantType stochasticGradientDescent(
-        std::map<typename utility::parametric::VariableType<FunctionType>::type, typename utility::parametric::CoefficientType<FunctionType>::type>& position);
-    ConstantType doStep(
-        typename utility::parametric::VariableType<FunctionType>::type steppingParameter,
-        std::map<typename utility::parametric::VariableType<FunctionType>::type, typename utility::parametric::CoefficientType<FunctionType>::type>& position,
-        const std::map<typename utility::parametric::VariableType<FunctionType>::type, ConstantType>& gradient, uint_fast64_t stepNum);
     ConstantType constantTypeSqrt(ConstantType input) {
         if (std::is_same<ConstantType, double>::value) {
             return utility::sqrt(input);
