@@ -34,7 +34,7 @@ def sign(x):
     else:
         return 1 if x > 0 else -1
 
-class GradientDescent:
+class POMDPFamiliesSynthesis:
 
     def load_sketch(self, project_path):
         project_path = os.path.abspath(project_path)
@@ -120,23 +120,37 @@ class GradientDescent:
 
     def solve_pomdp_saynt(self, pomdp, specification, k, timeout=10):
         pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, specification)
+        # Either use this code below or the commented code thereafter. Both crash, but differently.
+        # START
         if self.storm_control is None:
             self.storm_control = paynt.quotient.storm_pomdp_control.StormPOMDPControl()
-            paynt_iter_timeout = 5
-            storm_iter_timeout = 1
-            iterative_storm = (timeout,paynt_iter_timeout,storm_iter_timeout)
+            paynt_iter_timeout = 10
+            storm_iter_timeout = 2
+            iterative_storm = (timeout, paynt_iter_timeout, storm_iter_timeout)
             self.storm_control.set_options(
                 storm_options="cutoff", get_storm_result=None, iterative_storm=iterative_storm, use_storm_cutoffs=False,
-                unfold_strategy_storm="storm", prune_storm=False, export_fsc_storm=None, export_fsc_paynt=None
+                unfold_strategy_storm="storm", prune_storm=True, export_fsc_storm=None, export_fsc_paynt=None
             )
         synthesizer = paynt.synthesizer.synthesizer.Synthesizer.choose_synthesizer(
                 pomdp_quotient, method="ar", fsc_synthesis=True, storm_control=self.storm_control
-            )
+        )
+        # END
+        # storm_control = paynt.quotient.storm_pomdp_control.StormPOMDPControl()
+        # paynt_iter_timeout = 5
+        # storm_iter_timeout = 1
+        # iterative_storm = (timeout,paynt_iter_timeout,storm_iter_timeout)
+        # storm_control.set_options(
+        #     storm_options="cutoff", get_storm_result=None, iterative_storm=iterative_storm, use_storm_cutoffs=False,
+        #     unfold_strategy_storm="storm", prune_storm=False, export_fsc_storm=None, export_fsc_paynt=None
+        # )
+        # synthesizer = paynt.synthesizer.synthesizer.Synthesizer.choose_synthesizer(
+        #         pomdp_quotient, method="ar", fsc_synthesis=True, storm_control=storm_control
+        # )
         synthesizer.run(optimum_threshold=None)
         assignment = synthesizer.storm_control.latest_paynt_result
         assert assignment is not None
         fsc = pomdp_quotient.assignment_to_fsc(assignment)
-        return fsc, None
+        return fsc, None # replacing None with synthesizer stores the classes in a list to not delete the objects, but to no avail.
 
     def random_fsc(self, pomdp_sketch, num_nodes):
         num_obs = pomdp_sketch.num_observations
@@ -163,9 +177,12 @@ class GradientDescent:
 
         hole_combinations = random.choices(list(pomdp_sketch.family.all_combinations()),k = 10)
         hole_assignments_to_test = [pomdp_sketch.family.construct_assignment(hole_combination) for hole_combination in hole_combinations]
+        
+        pomdps = []
 
         for i, assignment in enumerate(hole_assignments_to_test):
             pomdp = pomdp_sketch.build_pomdp(assignment)
+            pomdps.append(pomdp) 
             # assert that observation classes are preserved
             for state in range(pomdp.model.nr_states):
                 quotient_state = pomdp.quotient_state_map[state]
@@ -529,7 +546,7 @@ class GradientDescent:
                         summation += valuation
                     assert np.isclose(float(summation), 1)
 
-    def __init__(self, seed : int = 11, num_nodes : int = 2):
+    def __init__(self, project_path : str, seed : int = 11, num_nodes : int = 2):
         random.seed(seed)
         np.random.seed(seed)
 
@@ -537,10 +554,6 @@ class GradientDescent:
         paynt.cli.setup_logger()
 
         # load sketch
-        project_path="models/pomdp/sketches/obstacles-10-2"
-        # project_path="models/pomdp/sketches/avoid"
-        # project_path="models/pomdp/sketches/dpm"
-
         self.pomdp_sketch = self.load_sketch(project_path)
         
         self.storm_control = None
@@ -561,8 +574,3 @@ class GradientDescent:
         self.use_softmax = False
 
         self.env = stormpy.Environment()
-        
-
-
-gd = GradientDescent()
-gd.experiment_on_subfamily(gd.pomdp_sketch, 2, saynt=True, timeout=120, evaluate_on_whole_family=True)
