@@ -12,9 +12,9 @@ pomdp
 
 
 observable "c" = c;
-observable "sp" = sp;
-observable "sr" = sr;
-observable "bat" = bat;
+// observable "sp" = sp;
+// observable "sr" = sr;
+// observable "bat" = bat;
 observable "goal" = goal;
 
 // initial queue size
@@ -142,9 +142,11 @@ endmodule
 
 formula goal = (bat = 0);
 
-formula reward_served = sp=2 & q>0 ? 10 : 0;
-formula penalty_lost = sr=1 & q=QMAX ? 20 : 0;
+formula reward_served = sp=2 & q>0 ? 40 : 0;
+formula penalty_lost = sr=1 & q=QMAX ? 0 : 0;
 
 rewards "rew"
-    true: reward_served - penalty_lost;
+    [tick00] true: penalty_lost + reward_served;
+    [tick01] true: penalty_lost + reward_served;
+    [tick02] true: penalty_lost + reward_served;
 endrewards
