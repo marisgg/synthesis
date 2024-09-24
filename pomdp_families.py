@@ -122,15 +122,15 @@ class POMDPFamiliesSynthesis:
         pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, specification)
         # Either use this code below or the commented code thereafter. Both crash, but differently.
         # START
-        if self.storm_control is None:
-            self.storm_control = paynt.quotient.storm_pomdp_control.StormPOMDPControl()
-            paynt_iter_timeout = 10
-            storm_iter_timeout = 2
-            iterative_storm = (timeout, paynt_iter_timeout, storm_iter_timeout)
-            self.storm_control.set_options(
-                storm_options="cutoff", get_storm_result=None, iterative_storm=iterative_storm, use_storm_cutoffs=False,
-                unfold_strategy_storm="storm", prune_storm=True, export_fsc_storm=None, export_fsc_paynt=None
-            )
+        # if self.storm_control is None:
+        self.storm_control = paynt.quotient.storm_pomdp_control.StormPOMDPControl()
+        paynt_iter_timeout = 10
+        storm_iter_timeout = 2
+        iterative_storm = (timeout, paynt_iter_timeout, storm_iter_timeout)
+        self.storm_control.set_options(
+            storm_options="cutoff", get_storm_result=None, iterative_storm=iterative_storm, use_storm_cutoffs=False,
+            unfold_strategy_storm="storm", prune_storm=True, export_fsc_storm=None, export_fsc_paynt=None
+        )
         synthesizer = paynt.synthesizer.synthesizer.Synthesizer.choose_synthesizer(
                 pomdp_quotient, method="ar", fsc_synthesis=True, storm_control=self.storm_control
         )
@@ -147,9 +147,8 @@ class POMDPFamiliesSynthesis:
         #         pomdp_quotient, method="ar", fsc_synthesis=True, storm_control=storm_control
         # )
         synthesizer.run(optimum_threshold=None)
-        assignment = synthesizer.storm_control.latest_paynt_result
-        assert assignment is not None
-        fsc = pomdp_quotient.assignment_to_fsc(assignment)
+        assert synthesizer.storm_control.latest_paynt_result_fsc is not None
+        fsc = synthesizer.storm_control.latest_paynt_result_fsc
         return fsc, None # replacing None with synthesizer stores the classes in a list to not delete the objects, but to no avail.
 
     def random_fsc(self, pomdp_sketch, num_nodes):
@@ -188,11 +187,12 @@ class POMDPFamiliesSynthesis:
                 quotient_state = pomdp.quotient_state_map[state]
                 assert pomdp.model.observations[state] == pomdp_sketch.state_to_observation[quotient_state]
             pomdp = pomdp.model
+            specification = pomdp_sketch.specification.copy()
             if saynt:
-                fsc, objects = self.solve_pomdp_saynt(pomdp, pomdp_sketch.specification, num_nodes, timeout=timeout) # GO OOM
+                fsc, objects = self.solve_pomdp_saynt(pomdp, specification, num_nodes, timeout=timeout) # GO OOM
                 dummy.append(objects)
             else:
-                fsc = self.solve_pomdp_paynt(pomdp, pomdp_sketch.specification, num_nodes, timeout=timeout)
+                fsc = self.solve_pomdp_paynt(pomdp, specification, num_nodes, timeout=timeout)
 
             for n in range(fsc.num_nodes):
                 for o in range(nO):
