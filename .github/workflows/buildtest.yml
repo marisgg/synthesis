@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - master
+      - mdp
   schedule:
     # run weekly
     - cron: '0 10 * * 3'
@@ -27,6 +28,7 @@ jobs:
         buildType:
           - {name: "Release", baseImageName : "randriu/paynt", imageName : "marisgg/paynt-learner", dockerTag: "latest", setupArgs: ""}
       fail-fast: false
+    if: github.ref == 'refs/heads/master'
     steps:
       - name: Git clone
         uses: actions/checkout@v4

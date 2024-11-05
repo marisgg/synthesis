@@ -110,8 +110,8 @@ def setup_logger(log_path = None):
     help="path to output file for SAYNT belief FSC")
 @click.option("--export-fsc-paynt", type=click.Path(), default=None,
     help="path to output file for SAYNT inductive FSC")
-@click.option("--export-evaluation", type=click.Path(), default=None,
-    help="base filename to output evaluation result")
+@click.option("--export-synthesis", type=click.Path(), default=None,
+    help="base filename to output synthesis result")
 
 @click.option("--mdp-split-wrt-mdp", is_flag=True, default=False,
     help="if set, MDP abstraction scheduler will be used for splitting, otherwise game abstraction scheduler will be used")
@@ -126,8 +126,10 @@ def setup_logger(log_path = None):
     help="decision tree synthesis: tree depth")
 @click.option("--tree-enumeration", is_flag=True, default=False,
     help="decision tree synthesis: if set, all trees of size at most tree_depth will be enumerated")
+@click.option("--tree-map-scheduler", type=click.Path(), default=None,
+    help="decision tree synthesis: path to a scheduler to be mapped to a decision tree")
 @click.option("--add-dont-care-action", is_flag=True, default=False,
-    help="decision tree synthesis: if set, an explicit action simulating a random action selection will be added to each state")
+    help="decision tree synthesis: # if set, an explicit action executing a random choice of an available action will be added to each state")
 
 @click.option(
     "--constraint-bound", type=click.FLOAT, help="bound for creating constrained POMDP for Cassandra models",
@@ -148,9 +150,9 @@ def paynt_run(
     fsc_synthesis, fsc_memory_size, posterior_aware,
     storm_pomdp, iterative_storm, get_storm_result, storm_options, prune_storm,
     use_storm_cutoffs, unfold_strategy_storm,
-    export_fsc_storm, export_fsc_paynt, export_evaluation,
+    export_fsc_storm, export_fsc_paynt, export_synthesis,
     mdp_split_wrt_mdp, mdp_discard_unreachable_choices, mdp_use_randomized_abstraction,
-    tree_depth, tree_enumeration, add_dont_care_action,
+    tree_depth, tree_enumeration, tree_map_scheduler, add_dont_care_action,
     constraint_bound,
     ce_generator,
     profiling
@@ -166,6 +168,7 @@ def paynt_run(
 
     # set CLI parameters
     paynt.quotient.quotient.Quotient.disable_expected_visits = disable_expected_visits
+    paynt.synthesizer.synthesizer.Synthesizer.export_synthesis_filename_base = export_synthesis
     paynt.synthesizer.synthesizer_cegis.SynthesizerCEGIS.conflict_generator_type = ce_generator
     paynt.quotient.pomdp.PomdpQuotient.initial_memory_size = fsc_memory_size
     paynt.quotient.pomdp.PomdpQuotient.posterior_aware = posterior_aware
@@ -177,6 +180,7 @@ def paynt_run(
 
     paynt.synthesizer.decision_tree.SynthesizerDecisionTree.tree_depth = tree_depth
     paynt.synthesizer.decision_tree.SynthesizerDecisionTree.tree_enumeration = tree_enumeration
+    paynt.synthesizer.decision_tree.SynthesizerDecisionTree.scheduler_path = tree_map_scheduler
     paynt.quotient.mdp.MdpQuotient.add_dont_care_action = add_dont_care_action
 
     storm_control = None
