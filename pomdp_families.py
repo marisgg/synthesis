@@ -120,32 +120,17 @@ class POMDPFamiliesSynthesis:
 
     def solve_pomdp_saynt(self, pomdp, specification, k, timeout=10):
         pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, specification)
-        # Either use this code below or the commented code thereafter. Both crash, but differently.
-        # START
-        # if self.storm_control is None:
-        self.storm_control = paynt.quotient.storm_pomdp_control.StormPOMDPControl()
-        paynt_iter_timeout = 10
+        storm_control = paynt.quotient.storm_pomdp_control.StormPOMDPControl()
+        paynt_iter_timeout = 5
         storm_iter_timeout = 2
         iterative_storm = (timeout, paynt_iter_timeout, storm_iter_timeout)
-        self.storm_control.set_options(
+        storm_control.set_options(
             storm_options="cutoff", get_storm_result=None, iterative_storm=iterative_storm, use_storm_cutoffs=False,
             unfold_strategy_storm="storm", prune_storm=True, export_fsc_storm=None, export_fsc_paynt=None
         )
         synthesizer = paynt.synthesizer.synthesizer.Synthesizer.choose_synthesizer(
-                pomdp_quotient, method="ar", fsc_synthesis=True, storm_control=self.storm_control
+                pomdp_quotient, method="ar", fsc_synthesis=True, storm_control=storm_control
         )
-        # END
-        # storm_control = paynt.quotient.storm_pomdp_control.StormPOMDPControl()
-        # paynt_iter_timeout = 5
-        # storm_iter_timeout = 1
-        # iterative_storm = (timeout,paynt_iter_timeout,storm_iter_timeout)
-        # storm_control.set_options(
-        #     storm_options="cutoff", get_storm_result=None, iterative_storm=iterative_storm, use_storm_cutoffs=False,
-        #     unfold_strategy_storm="storm", prune_storm=False, export_fsc_storm=None, export_fsc_paynt=None
-        # )
-        # synthesizer = paynt.synthesizer.synthesizer.Synthesizer.choose_synthesizer(
-        #         pomdp_quotient, method="ar", fsc_synthesis=True, storm_control=storm_control
-        # )
         synthesizer.run(optimum_threshold=None)
         assert synthesizer.storm_control.latest_paynt_result_fsc is not None
         fsc = synthesizer.storm_control.latest_paynt_result_fsc
@@ -198,7 +183,7 @@ class POMDPFamiliesSynthesis:
                 for o in range(nO):
                     if o >= len(fsc.action_function[n]):
                         fsc.action_function[n].append({a : 1 / len(pomdp_sketch.observation_to_actions[o]) for a in pomdp_sketch.observation_to_actions[o]})
-                        fsc.update_function[n].append({m : 1 / num_nodes for m in range(num_nodes)})
+                        fsc.update_function[n].append({m : 1 / num_nodes for m in range(fsc.num_nodes)})
                     else:
                         a = fsc.action_function[n][o]
                         action_label = fsc.action_labels[a]
@@ -207,7 +192,7 @@ class POMDPFamiliesSynthesis:
                         fsc.action_function[n][o] = {family_action : 1.0}
                         fsc.update_function[n][o] = {fsc.update_function[n][o] : 1.0}
 
-            assert all([len(fsc.action_function[n]) == nO for n in range(num_nodes)])
+            assert all([len(fsc.action_function[n]) == nO for n in range(fsc.num_nodes)])
             fsc.is_deterministic = False
             fsc.num_observations = nO
 
