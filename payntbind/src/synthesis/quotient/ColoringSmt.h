@@ -26,7 +26,7 @@ public:
         std::vector<std::string> const& variable_name,
         std::vector<std::vector<int64_t>> const& variable_domain,
         std::vector<std::tuple<uint64_t,uint64_t,uint64_t>> const& tree_list,
-        bool one_consistency_check = false
+        bool disable_counterexamples = false
     );
 
     /** For each hole, get a list of name-type pairs.  */
@@ -49,9 +49,6 @@ public:
     std::pair<bool,std::vector<std::vector<uint64_t>>> areChoicesConsistent(
         BitVector const& choices, Family const& subfamily
     );
-    std::pair<bool,std::vector<std::vector<uint64_t>>> areChoicesConsistentUseHint(
-        BitVector const& choices, Family const& subfamily, std::vector<std::pair<uint64_t,uint64_t>> const& unsat_core_hint
-    );
 
     std::map<std::string,storm::utility::Stopwatch> timers;
     std::vector<std::pair<std::string,double>> getProfilingInfo() {
@@ -67,6 +64,9 @@ public:
     std::vector<std::pair<uint64_t,uint64_t>> unsat_core;
 
 protected:
+
+    /** If true, the object will be setup for one consistency check. */
+    bool disable_counterexamples;
 
     /** The initial state. */
     const uint64_t initial_state;
@@ -135,9 +135,6 @@ protected:
 
     bool PRINT_UNSAT_CORE = false;
     void loadUnsatCore(z3::expr_vector const& unsat_core_expr, Family const& subfamily);
-
-    /** If true, the object will be setup for one consistency check. */
-    bool one_consistency_check;
 
 };
 

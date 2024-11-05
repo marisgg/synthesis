@@ -5,6 +5,8 @@ import paynt.utils.timer
 import stormpy
 import payntbind
 
+import json
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -14,11 +16,13 @@ class SynthesizerDecisionTree(paynt.synthesizer.synthesizer_ar.SynthesizerAR):
     tree_depth = 0
     # if set, all trees of size at most tree_depth will be enumerated
     tree_enumeration = False
-    # if set, the optimal k-tree will be used to jumpstart the synthesis of the (k+1)-tree
-    use_tree_hint = True
+    # path to a scheduler to be mapped to a decision tree
+    scheduler_path = None
 
     def __init__(self, *args):
         super().__init__(*args)
+        self.best_tree = None
+        self.best_tree_value = None
 
     @property
     def method_name(self):
@@ -59,7 +63,6 @@ class SynthesizerDecisionTree(paynt.synthesizer.synthesizer_ar.SynthesizerAR):
 
     def verify_family(self, family):
         self.num_families_considered += 1
-
         self.quotient.build(family)
         if family.mdp is None:
             self.num_families_skipped += 1
@@ -83,7 +86,10 @@ class SynthesizerDecisionTree(paynt.synthesizer.synthesizer_ar.SynthesizerAR):
         self.check_specification_for_mdp(family)
         if not family.analysis_result.can_improve:
             return
+        if SynthesizerDecisionTree.scheduler_path is not None:
+            return
         self.harmonize_inconsistent_scheduler(family)
+
 
     def counters_reset(self):
         self.num_families_considered = 0
@@ -102,17 +108,39 @@ class SynthesizerDecisionTree(paynt.synthesizer.synthesizer_ar.SynthesizerAR):
         logger.info(f"harmonizations succeeded: {self.num_harmonization_succeeded}")
         print()
 
+    def export_decision_tree(self, decision_tree, export_filename_base):
+        tree = decision_tree.to_graphviz()
+        # tree_filename = export_filename_base + ".dot"
+        # with open(tree_filename, 'w') as file:
+        #     file.write(tree.source)
+        # logger.info(f"exported decision tree to {tree_filename}")
+
+        tree_visualization_filename = export_filename_base + ".png"
+        tree.render(export_filename_base, format="png", cleanup=True) # using export_filename_base since graphviz appends .png by default
+        logger.info(f"exported decision tree visualization to {tree_visualization_filename}")
+
+
     def synthesize_tree(self, depth:int):
         self.counters_reset()
-        self.quotient.set_depth(depth)
+        self.quotient.reset_tree(depth)
+        self.best_assignment = self.best_assignment_value = None
         self.synthesize(keep_optimum=True)
+        if self.best_assignment is not None:
+            self.quotient.decision_tree.root.associate_assignment(self.best_assignment)
+            self.best_tree = self.quotient.decision_tree
+            self.best_tree_value = self.best_assignment_value
+        self.best_assignment = self.best_assignment_value = None
         self.counters_print()
 
     def synthesize_tree_sequence(self, opt_result_value):
-        tree_hint = None
+        self.best_tree = self.best_tree_value = None
+
+        global_timeout = paynt.utils.timer.GlobalTimer.global_timer.time_limit_seconds
+        if global_timeout is None: global_timeout = 900
+        depth_timeout = global_timeout / 2 / SynthesizerDecisionTree.tree_depth
         for depth in range(SynthesizerDecisionTree.tree_depth+1):
             print()
-            self.quotient.set_depth(depth)
+            self.quotient.reset_tree(depth)
             best_assignment_old = self.best_assignment
 
             family = self.quotient.family
@@ -120,19 +148,21 @@ class SynthesizerDecisionTree(paynt.synthesizer.synthesizer_ar.SynthesizerAR):
             self.counters_reset()
             self.stat = paynt.synthesizer.statistic.Statistic(self)
             self.stat.start(family)
-            self.synthesis_timer = paynt.utils.timer.Timer()
+            timeout = depth_timeout if depth < SynthesizerDecisionTree.tree_depth else None
+            self.synthesis_timer = paynt.utils.timer.Timer(timeout)
             self.synthesis_timer.start()
             families = [family]
 
-            if SynthesizerDecisionTree.use_tree_hint and tree_hint is not None:
+            if self.best_tree is not None:
                 subfamily = family.copy()
-                self.quotient.decision_tree.root.apply_hint(subfamily,tree_hint)
+                self.quotient.decision_tree.root.apply_hint(subfamily,self.best_tree.root)
                 families = [subfamily,family]
 
             for family in families:
                 self.synthesize_one(family)
             self.stat.finished_synthesis()
             self.stat.print()
+            self.synthesis_timer = None
             self.counters_print()
 
             new_assignment_synthesized = self.best_assignment != best_assignment_old
@@ -145,51 +175,108 @@ class SynthesizerDecisionTree(paynt.synthesizer.synthesizer_ar.SynthesizerAR):
                     result = dtmc.check_specification(self.quotient.specification)
                     logger.info(f"double-checking specification satisfiability: {result}")
 
+                self.best_tree = self.quotient.decision_tree
+                self.best_tree.root.associate_assignment(self.best_assignment)
+                self.best_tree_value = self.best_assignment_value
+
                 if abs( (self.best_assignment_value-opt_result_value)/opt_result_value ) < 1e-3:
                     break
-
-                tree_hint = self.quotient.decision_tree.root
-                tree_hint.associate_assignment(self.best_assignment)
 
             if self.resource_limit_reached():
                 break
 
+    def map_scheduler(self, scheduler_choices, opt_result_value):
+        # use counterexamples iff a dont' care action exists
+        disable_counterexamples = "__random__" not in self.quotient.action_labels
+        self.counters_reset()
+        for depth in range(SynthesizerDecisionTree.tree_depth+1):
+            self.quotient.reset_tree(depth,disable_counterexamples=disable_counterexamples)
+            family = self.quotient.family
+            self.quotient.build(family)
+            family.analysis_result = self.quotient.build_unsat_result()
+            best_assignment_old = self.best_assignment
+
+            consistent,hole_selection = self.quotient.are_choices_consistent(scheduler_choices, family)
+            if consistent:
+                self.verify_hole_selection(family,hole_selection)
+            elif not disable_counterexamples:
+                harmonizing_hole = [hole for hole,options in enumerate(hole_selection) if len(options)>1][0]
+                selection_1 = hole_selection.copy(); selection_1[harmonizing_hole] = [selection_1[harmonizing_hole][0]]
+                selection_2 = hole_selection.copy(); selection_2[harmonizing_hole] = [selection_2[harmonizing_hole][1]]
+                for selection in [selection_1,selection_2]:
+                    self.verify_hole_selection(family,selection)
+
+            new_assignment_synthesized = self.best_assignment != best_assignment_old
+            if new_assignment_synthesized:
+                self.best_tree = self.quotient.decision_tree
+                self.best_tree.root.associate_assignment(self.best_assignment)
+                self.best_tree_value = self.best_assignment_value
+                if consistent:
+                    break
+                if not disable_counterexamples and abs( (self.best_assignment_value-opt_result_value)/opt_result_value ) < 1e-4:
+                    break
+
+            if self.resource_limit_reached():
+                break
+
+        # self.counters_print()
 
     def run(self, optimum_threshold=None):
-        paynt_mdp = paynt.models.models.Mdp(self.quotient.quotient_mdp)
-        mc_result = paynt_mdp.model_check_property(self.quotient.get_property())
+
+        scheduler_choices = None
+        if SynthesizerDecisionTree.scheduler_path is None:
+            paynt_mdp = paynt.models.models.Mdp(self.quotient.quotient_mdp)
+            mc_result = paynt_mdp.model_check_property(self.quotient.get_property())
+        else:
+            opt_result_value = None
+            with open(SynthesizerDecisionTree.scheduler_path, 'r') as f:
+                scheduler_json = json.load(f)
+            scheduler_choices = self.quotient.scheduler_json_to_choices(scheduler_json)
+            submdp = self.quotient.build_from_choice_mask(scheduler_choices)
+            mc_result = submdp.model_check_property(self.quotient.get_property())
         opt_result_value = mc_result.value
         logger.info(f"the optimal scheduler has value: {opt_result_value}")
 
-        if self.quotient.specification.has_optimality:
-            epsilon = 1e-1
-            mc_result_positive = opt_result_value > 0
-            if self.quotient.specification.optimality.maximizing == mc_result_positive:
-                epsilon *= -1
-            # optimum_threshold = opt_result_value * (1 + epsilon)
-
-        self.set_optimality_threshold(optimum_threshold)
-        self.best_assignment = None
-        self.best_assignment_value = None
-
-        if not SynthesizerDecisionTree.tree_enumeration:
-            self.synthesize_tree(SynthesizerDecisionTree.tree_depth)
+        self.best_assignment = self.best_assignment_value = None
+        self.best_tree = self.best_tree_value = None
+        if scheduler_choices is not None:
+            self.map_scheduler(scheduler_choices, opt_result_value)
         else:
-            self.synthesize_tree_sequence(opt_result_value)
+            if self.quotient.specification.has_optimality:
+                epsilon = 1e-1
+                mc_result_positive = opt_result_value > 0
+                if self.quotient.specification.optimality.maximizing == mc_result_positive:
+                    epsilon *= -1
+                # optimum_threshold = opt_result_value * (1 + epsilon)
+            self.set_optimality_threshold(optimum_threshold)
+
+            if not SynthesizerDecisionTree.tree_enumeration:
+                self.synthesize_tree(SynthesizerDecisionTree.tree_depth)
+            else:
+                self.synthesize_tree_sequence(opt_result_value)
 
         logger.info(f"the optimal scheduler has value: {opt_result_value}")
-        if self.best_assignment is not None:
-            logger.info(f"admissible assignment found: {self.best_assignment}")
-            if self.quotient.specification.has_optimality:
-                logger.info(f"best assignment has value {self.quotient.specification.optimality.optimum}")
+        if self.best_tree is None:
+            logger.info("no admissible tree found")
         else:
-            logger.info("no admissible assignment found")
-        time_total = paynt.utils.timer.GlobalTimer.read()
-        # logger.info(f"synthesis time: {round(time_total, 2)} s")
+            target_states = self.quotient.identify_target_states()
+            self.best_tree.simplify(target_states)
+            depth = self.best_tree.get_depth()
+            num_nodes = len(self.best_tree.collect_nonterminals())
+            logger.info(f"synthesized tree of depth {depth} with {num_nodes} decision nodes")
+            if self.quotient.specification.has_optimality:
+                logger.info(f"the synthesized tree has value {self.best_tree_value}")
+            logger.info(f"printing the synthesized tree below:")
+            print(self.best_tree.to_string())
 
-        print()
-        for name,time in self.quotient.coloring.getProfilingInfo():
-            time_percent = round(time/time_total*100,1)
-            print(f"{name} = {time} s ({time_percent} %)")
+            if self.export_synthesis_filename_base is not None:
+                self.export_decision_tree(self.best_tree, self.export_synthesis_filename_base)
+        time_total = round(paynt.utils.timer.GlobalTimer.read(),2)
+        logger.info(f"synthesis finished after {time_total} seconds")
 
-        return self.best_assignment
+        # print()
+        # for name,time in self.quotient.coloring.getProfilingInfo():
+        #     time_percent = round(time/time_total*100,1)
+        #     print(f"{name} = {time} s ({time_percent} %)")
+
+        return self.best_tree
