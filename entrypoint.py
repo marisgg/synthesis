@@ -8,10 +8,9 @@ project_path="models/pomdp/sketches/obstacles-10-2"
 # project_path="models/pomdp/sketches/dpm"
 
 gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1)
-gd.run_gradient_descent_old(100, 3)
 
 subfamily_assigments = gd.create_random_subfamily(5)
-print(type(subfamily_assigments[0]))
+# print(type(subfamily_assigments[0]))
 
 
 # gd.run_gradient_descent_on_family(1000, 3, timeout=60)

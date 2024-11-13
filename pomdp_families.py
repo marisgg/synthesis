@@ -413,76 +413,6 @@ class POMDPFamiliesSynthesis:
         
         return pmc, action_function_params, memory_function_params, resolution, parameter_resolution
 
-    def run_gradient_descent_old(self, num_iters : int, num_nodes : int):
-        
-        task = stormpy.ParametricCheckTask(self.pomdp_sketch.get_property().formula, only_initial_states=False)
-        
-        action_function_params = {}
-        memory_function_params = {}
-        
-        for i in range(num_iters):  
-            
-            artificial_upper_bound = None # if current_value is None else current_value * (1.1 if self.Rmin else 0.9)
-            
-            new_resolution = {}
-            
-            if i % 10 == 0:
-                if i > 0:
-                    fsc = self.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, self.nO, self.pomdp_sketch.observation_to_actions)
-                    # print(fsc)
-                    dtmc_sketch = self.pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
-                    synthesizer = paynt.synthesizer.synthesizer_ar.SynthesizerAR(dtmc_sketch)
-                    hole_assignment = synthesizer.run(optimum_threshold=artificial_upper_bound)
-                    # hole_assignment = pomdp_sketch.family.pick_random()
-                else:
-                    hole_assignment = self.pomdp_sketch.family.pick_any()
-                # print(hole_assignment)
-                pomdp_class = self.pomdp_sketch.build_pomdp(hole_assignment)
-                pomdp = pomdp_class.model
-                pmc, action_function_params, memory_function_params, resolution = self.construct_pmc(pomdp, self.pomdp_sketch, self.reward_model_name, num_nodes, action_function_params=action_function_params, memory_function_params=memory_function_params)
-                
-                checker = payntbind.synthesis.SparseDerivativeInstantiationModelCheckerFamily(pmc)
-                checker.specifyFormula(self.env, task)
-
-                instantiator = stormpy.pars.PDtmcInstantiator(pmc)
-                parameters = pmc.collect_all_parameters()
-                action_function_params_no_const = {index : var for index, var in action_function_params.items() if isinstance(var, pycarl.Variable)}
-                memory_function_params_no_const = {index : var for index, var in memory_function_params.items() if isinstance(var, pycarl.Variable)}
-                for p in pmc.collect_all_parameters():
-                    assert p in action_function_params_no_const.values() or p in memory_function_params_no_const.values()
-            
-            instantiated_model = instantiator.instantiate(resolution)
-            result = stormpy.model_checking(instantiated_model, self.formula)
-            current_value = result.as_explicit_quantitative().at(0)
-            print(f"I{i}. POMDP={hole_assignment}. RESULT:", current_value)
-
-            new_resolution = {}
-            
-            lr = 0.001
-
-            for p in parameters:
-                try:
-                    res = checker.check(self.env, resolution, p)
-                except Exception as e:
-                    fsc = self.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, self.nO, self.pomdp_sketch.observation_to_actions)
-                    print(fsc.action_function)
-                    print(fsc.update_function)
-                    raise e
-                if self.minimizing:
-                    update = float(resolution[p]) - lr * sign(res.at(0))
-                else:
-                    update = float(resolution[p]) + lr * sign(res.at(0))
-                corrected = pc.Rational(min(max(update, 0), 1))
-                # print(update, float(corrected))
-                assert corrected >= 0 and corrected <= 1
-                new_resolution[p] = corrected
-                
-                assert new_resolution[p] >= 0
-
-            resolution = new_resolution
-
-
-
     def resolution_to_softmax(self, action_function_params, memory_function_params, parameter_resolution, num_nodes):
         probabilistic_resolution = {}
         for n in range(num_nodes):
@@ -492,12 +422,14 @@ class POMDPFamiliesSynthesis:
                 softmax_action_probs = stablesoftmax(np.array([float(parameter_resolution[var]) for var in action_params if var in parameter_resolution]))
                 assert math.isclose(sum(softmax_action_probs), 1)
                 for var, softmax_prob in zip(action_params, softmax_action_probs):
+                    assert softmax_prob > 0 and softmax_prob <= 1
                     probabilistic_resolution[var] = pycarl.cln.cln.Rational(softmax_prob)
                     
                 node_params = [memory_function_params[n,o,m] for m in range(num_nodes) if (n,o,m) in memory_function_params]
                 softmax_memory_probs = stablesoftmax(np.array([float(parameter_resolution[var]) for var in node_params]))
                 assert math.isclose(sum(softmax_memory_probs), 1)
                 for var, softmax_prob in zip(node_params, softmax_memory_probs):
+                    assert softmax_prob > 0 and softmax_prob <= 1
                     probabilistic_resolution[var] = pycarl.cln.cln.Rational(softmax_prob)
         
         return probabilistic_resolution
@@ -513,7 +445,7 @@ class POMDPFamiliesSynthesis:
             self.sanity_check_pmc_at_instantiation(pmc, resolution)
             checker = payntbind.synthesis.SparseDerivativeInstantiationModelCheckerFamily(pmc)
             task = stormpy.ParametricCheckTask(self.pomdp_sketch.get_property().copy().formula, only_initial_states=False)
-            checker.specifyFormula(self.env, self.synth_task)
+            checker.specifyFormula(stormpy.Environment(), task)
             exit()
         else:
             wrapper = payntbind.synthesis.GradientDescentInstantiationSearcherFamily(pmc, self.lr, self.mbs, self.gd_steps)
