@@ -35,14 +35,15 @@ class GradientDescentInstantiationSearcherFamily {
      * @param squaredAverageDecay Decay of ADAM's squared decaying average.
      * @param miniBatchSize Size of a minibatch.
      * @param terminationEpsilon A value step smaller than this is considered a "tiny step", after
+     * @param steps How many iteration of gradient descent are performed
      * a number of these the algorithm will terminate.
      * @param startPoint Start point of the search (default: all parameters set to 0.5)
      * @param recordRun Records the run into a global variable, which can be converted into JSON
      * using the printRunAsJson function
      */
     GradientDescentInstantiationSearcherFamily(
-        storm::models::sparse::Dtmc<FunctionType> const& model, GradientDescentMethod method = GradientDescentMethod::MOMENTUM_SIGN, ConstantType learningRate = 0.001,
-        ConstantType averageDecay = 0.9, ConstantType squaredAverageDecay = 0.999, uint_fast64_t miniBatchSize = 256, ConstantType terminationEpsilon = 1e-6,
+        storm::models::sparse::Dtmc<FunctionType> const& model, ConstantType learningRate, uint_fast64_t miniBatchSize, uint_fast64_t steps,
+        GradientDescentMethod method = GradientDescentMethod::MOMENTUM_SIGN, ConstantType averageDecay = 0.9, ConstantType squaredAverageDecay = 0.999, ConstantType terminationEpsilon = 1e-6,
         boost::optional<
             std::map<typename utility::parametric::VariableType<FunctionType>::type, typename utility::parametric::CoefficientType<FunctionType>::type>>
             startPoint = boost::none,
@@ -51,6 +52,7 @@ class GradientDescentInstantiationSearcherFamily {
           derivativeEvaluationHelper(std::make_unique<SparseDerivativeInstantiationModelCheckerFamily<FunctionType, ConstantType>>(model)),
           instantiationModelChecker(
               std::make_unique<modelchecker::SparseDtmcInstantiationModelChecker<models::sparse::Dtmc<FunctionType>, ConstantType>>(model)),
+          steps(steps),
           startPoint(startPoint),
           miniBatchSize(miniBatchSize),
           terminationEpsilon(terminationEpsilon),
@@ -124,6 +126,11 @@ class GradientDescentInstantiationSearcherFamily {
             }
         }
     }
+
+    // void set_hyperparameters(GradientDescentMethod method = GradientDescentMethod::MOMENTUM_SIGN, ConstantType learningRate = 0.001,
+    //     ConstantType averageDecay = 0.9, ConstantType squaredAverageDecay = 0.999, uint_fast64_t miniBatchSize = 256) {
+
+    //     }
 
     /**
      * This will setup the matrices used for computing the derivatives by constructing the
@@ -212,6 +219,7 @@ class GradientDescentInstantiationSearcherFamily {
     boost::optional<std::map<typename utility::parametric::VariableType<FunctionType>::type, typename utility::parametric::CoefficientType<FunctionType>::type>>
         startPoint;
     const uint_fast64_t miniBatchSize;
+    const uint_fast64_t steps;
     const ConstantType terminationEpsilon;
     const GradientDescentConstraintMethod constraintMethod;
 

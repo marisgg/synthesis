@@ -67,6 +67,8 @@ void bindings_pomdp_family(py::module& m) {
         ) { return der.check(env,valuation,parameter); })
         ;
     
+    // py::class_<storm::derivative::GradientDescentMethod>(m, "GradientDescentMethod"); // TODO
+    
     py::class_<storm::pars::FeasibilitySynthesisTask, std::shared_ptr<storm::pars::FeasibilitySynthesisTask>>(m, "FeasibilitySynthesisTask")
         .def(py::init<std::shared_ptr<storm::logic::Formula const> const&>())
         .def("set_bound", [](storm::pars::FeasibilitySynthesisTask& task, storm::logic::ComparisonType comparisonType, storm::expressions::Expression const& bound) {
@@ -75,13 +77,15 @@ void bindings_pomdp_family(py::module& m) {
         ;
 
     py::class_<storm::derivative::GradientDescentInstantiationSearcherFamily<storm::RationalFunction, double>>(m, "GradientDescentInstantiationSearcherFamily", "Derivatives wrapper and stuff.")
-        .def(py::init<storm::models::sparse::Dtmc<storm::RationalFunction> const&>(), "Constructor.")
+        .def(py::init<storm::models::sparse::Dtmc<storm::RationalFunction> const&, 
+        // storm::derivative::GradientDescentMethod, // TODO
+        double, uint_fast64_t, uint_fast64_t>(), "Constructor.")
         // .def(py::init([](
         //     storm::models::sparse::Dtmc<storm::RationalFunction> const& model, double learningRate,
         //     double averageDecay, double squaredAverageDecay, uint_fast64_t miniBatchSize, double terminationEpsilon,
         //     boost::optional<std::map<typename utility::parametric::VariableType<storm::RationalFunction>::type, typename utility::parametric::CoefficientType<storm::RationalFunction>::type>> startPoint, bool recordRun
         // ) {
-        //     GradientDescentMethod method = GradientDescentMethod::ADAM;
+        //     GradientDescentMethod method = GradientDescentMethod::MOMENTUM_SIGN;
         //     GradientDescentConstraintMethod constraintMethod = GradientDescentConstraintMethod::PROJECT_WITH_GRADIENT;
         //     return GradientDescentInstantiationSearcherFamily(model,method,learningRate,averageDecay,squaredAverageDecay,miniBatchSize,terminationEpsilon,startPoint,constraintMethod,recordRun);
         // }))

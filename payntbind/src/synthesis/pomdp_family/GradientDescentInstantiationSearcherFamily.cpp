@@ -250,7 +250,7 @@ std::pair<ConstantType, std::map<typename utility::parametric::VariableType<Func
     // The index to keep track of what parameter(s) to consider next.
     // The "mini-batch", so the parameters to consider, are parameterNum..parameterNum+miniBatchSize-1
     uint_fast64_t parameterNum = 0;
-    for (uint_fast64_t stepNum = 0; stepNum < 10; ++stepNum) {
+    for (uint_fast64_t stepNum = 0; stepNum < steps; ++stepNum) {
         if (printUpdateStopwatch.getTimeInSeconds() >= 15) {
             printUpdateStopwatch.restart();
             STORM_PRINT_AND_LOG("Currently at " << currentValue << "\n");

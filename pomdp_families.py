@@ -417,9 +417,12 @@ class POMDPFamiliesSynthesis:
         
         task = stormpy.ParametricCheckTask(self.pomdp_sketch.get_property().formula, only_initial_states=False)
         
+        action_function_params = {}
+        memory_function_params = {}
+        
         for i in range(num_iters):  
             
-            artificial_upper_bound = None if current_value is None else current_value * (1.1 if self.Rmin else 0.9)
+            artificial_upper_bound = None # if current_value is None else current_value * (1.1 if self.Rmin else 0.9)
             
             new_resolution = {}
             
@@ -436,7 +439,7 @@ class POMDPFamiliesSynthesis:
                 # print(hole_assignment)
                 pomdp_class = self.pomdp_sketch.build_pomdp(hole_assignment)
                 pomdp = pomdp_class.model
-                pmc, action_function_params, memory_function_params, _ = self.construct_pmc(pomdp, self.pomdp_sketch, self.reward_model_name, num_nodes, action_function_params=action_function_params, memory_function_params=memory_function_params, new_resolution=new_resolution)
+                pmc, action_function_params, memory_function_params, resolution = self.construct_pmc(pomdp, self.pomdp_sketch, self.reward_model_name, num_nodes, action_function_params=action_function_params, memory_function_params=memory_function_params)
                 
                 checker = payntbind.synthesis.SparseDerivativeInstantiationModelCheckerFamily(pmc)
                 checker.specifyFormula(self.env, task)
@@ -499,8 +502,49 @@ class POMDPFamiliesSynthesis:
         
         return probabilistic_resolution
 
+
+    def gradient_descent_on_single_pomdp(self, hole_assignment, num_iters : int, num_nodes : int, action_function_params = {}, memory_function_params = {}, resolution = {}, parameter_resolution = None, timeout = None):
+        pomdp_class = self.pomdp_sketch.build_pomdp(hole_assignment)
+        pomdp = pomdp_class.model
+        pmc, action_function_params, memory_function_params, resolution, parameter_resolution = self.construct_pmc(pomdp, self.pomdp_sketch, self.reward_model_name, num_nodes, distinct_parameters_for_final_probability=self.use_softmax, parameter_resolution=parameter_resolution, resolution=resolution, action_function_params=action_function_params, memory_function_params=memory_function_params)
+        
+        if self.use_softmax:
+            resolution = self.resolution_to_softmax(action_function_params, memory_function_params, parameter_resolution, num_nodes)
+            self.sanity_check_pmc_at_instantiation(pmc, resolution)
+            checker = payntbind.synthesis.SparseDerivativeInstantiationModelCheckerFamily(pmc)
+            task = stormpy.ParametricCheckTask(self.pomdp_sketch.get_property().copy().formula, only_initial_states=False)
+            checker.specifyFormula(self.env, self.synth_task)
+            exit()
+        else:
+            wrapper = payntbind.synthesis.GradientDescentInstantiationSearcherFamily(pmc, self.lr, self.mbs, self.gd_steps)
+            wrapper.setup(self.env, self.synth_task)
+            wrapper.resetDynamicValues()
+
+        action_function_params_no_const = {index : var for index, var in action_function_params.items() if isinstance(var, pycarl.Variable)}
+        memory_function_params_no_const = {index : var for index, var in memory_function_params.items() if isinstance(var, pycarl.Variable)}
+        for p in pmc.collect_all_parameters():
+            assert p in action_function_params_no_const.values() or p in memory_function_params_no_const.values()
+        
+        if timeout:
+            tik = time.time()
+        
+        for i in range(num_iters):
+            try:
+                wrapper.resetDynamicValues()
+                self.sanity_check_pmc_at_instantiation(pmc, resolution)
+                current_value, resolution = wrapper.stochasticGradientDescent(resolution)
+            except Exception as e:
+                print([float(x) for x in resolution.values()])
+                self.sanity_check_pmc_at_instantiation(pmc, resolution)
+                raise e
+            print(i, current_value)
+            if timeout and time.time() - tik > timeout:
+                break
+        
+        return current_value, resolution, action_function_params, memory_function_params, parameter_resolution
+
     
-    def run_gradient_descent_on_sub_family(self, num_iters : int, num_nodes : int, assignments : list, timeout : int = None, random : bool = False):
+    def run_gradient_descent_on_family(self, num_iters : int, num_nodes : int, assignments : list = None, timeout : int = None, random_selection : bool = False):
         current_value = None
         
         action_function_params = {}
@@ -509,6 +553,11 @@ class POMDPFamiliesSynthesis:
         best_family_value = 1e30 if self.minimizing else -1e30
         
         best_fsc = None
+        
+        if assignments is None:
+            print("Running on 'entire' family of size:")
+        else:
+            print("Running on sub-family of size:", len(assignments))
         
         values = []
         resolution = {}
@@ -524,114 +573,45 @@ class POMDPFamiliesSynthesis:
             if i > 0:
                 fsc = self.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, self.nO, self.pomdp_sketch.observation_to_actions)                
                 dtmc_sketch =  self.pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
-                synthesizer = paynt.synthesizer.synthesizer_ar.SynthesizerAR(dtmc_sketch)
-                hole_assignment = synthesizer.synthesize(optimum_threshold=artificial_upper_bound, keep_optimum=True)
-                paynt_value = synthesizer.best_assignment_value
-                
-                one_by_one = paynt.synthesizer.synthesizer_onebyone.SynthesizerOneByOne(dtmc_sketch)
-                evaluations = np.zeros(len(assignments))
-                for j, family in enumerate(assignments):
-                    evaluations[j] = one_by_one.evaluate(family, keep_value_only=True)[0]
-                hole_assignment_idx = np.argmax(evaluations) if self.minimizing else np.argmin(evaluations)
-                paynt_value = evaluations[hole_assignment_idx]
-                hole_assignment = assignments[hole_assignment_idx]
+                hole_assignment, paynt_value = self.paynt_call(dtmc_sketch, assignments=assignments, artificial_upper_bound=artificial_upper_bound, random_selection=random_selection)
                 print("Paynt value:", paynt_value, "previous family best:", best_family_value)
                 op = operator.lt if self.minimizing else operator.gt
                 if op(paynt_value, best_family_value):
                     best_fsc = fsc
                     best_family_value = paynt_value
-                if random: hole_assignment = self.pomdp_sketch.family.pick_random()
                 if timeout and time.time() - tik > timeout: break
             else:
                 hole_assignment = self.pomdp_sketch.family.pick_any()
             
-            current_value, new_resolution, *_ = self.gradient_descent_on_single_pomdp(hole_assignment, 1, num_nodes, action_function_params, memory_function_params, resolution, parameter_resolution)
+            current_value, new_resolution, *_ = self.gradient_descent_on_single_pomdp(hole_assignment, 10 // self.gd_steps, num_nodes, action_function_params, memory_function_params, resolution, parameter_resolution)
             
             values.append(current_value)
             
             resolution = new_resolution
         
         return best_fsc, best_family_value
-
-    def gradient_descent_on_single_pomdp(self, hole_assignment, num_iters : int, num_nodes : int, action_function_params = {}, memory_function_params = {}, resolution = {}, parameter_resolution = None, timeout = None):
-        pomdp_class = self.pomdp_sketch.build_pomdp(hole_assignment)
-        pomdp = pomdp_class.model
-        pmc, action_function_params, memory_function_params, resolution, parameter_resolution = self.construct_pmc(pomdp, self.pomdp_sketch, self.reward_model_name, num_nodes, distinct_parameters_for_final_probability=self.use_softmax, parameter_resolution=parameter_resolution, resolution=resolution, action_function_params=action_function_params, memory_function_params=memory_function_params)
-        wrapper = payntbind.synthesis.GradientDescentInstantiationSearcherFamily(pmc)
-        wrapper.setup(self.env, self.synth_task)
-        wrapper.resetDynamicValues()
-        
-        if self.use_softmax:
-            resolution = self.resolution_to_softmax(action_function_params, memory_function_params, parameter_resolution, num_nodes)
-            self.sanity_check_pmc_at_instantiation(pmc, resolution)
-            checker = payntbind.synthesis.SparseDerivativeInstantiationModelCheckerFamily(pmc)
-            task = stormpy.ParametricCheckTask(self.pomdp_sketch.get_property().copy().formula, only_initial_states=False)
-            checker.specifyFormula(self.env, task)            
-
-        action_function_params_no_const = {index : var for index, var in action_function_params.items() if isinstance(var, pycarl.Variable)}
-        memory_function_params_no_const = {index : var for index, var in memory_function_params.items() if isinstance(var, pycarl.Variable)}
-        for p in pmc.collect_all_parameters():
-            assert p in action_function_params_no_const.values() or p in memory_function_params_no_const.values()
-        
-        if timeout:
-            tik = time.time()
-        
-        for i in range(num_iters):
-            try:
-                current_value, resolution = wrapper.stochasticGradientDescent(resolution)
-            except Exception as e:
-                print([float(x) for x in resolution.values()])
-                raise e
-            print(i, current_value)
-            if timeout and time.time() - tik > timeout:
-                break
-        
-        return current_value, resolution, action_function_params, memory_function_params, parameter_resolution
-            
     
-    def run_gradient_descent_on_whole_family(self, num_iters : int, num_nodes : int, random = False) -> tuple[paynt.quotient.fsc.FSC, float]:        
-        current_value = None
-        
-        action_function_params = {}
-        memory_function_params = {}
-        
-        best_family_value = 1e30 if self.minimizing else -1e30
-        
-        best_fsc = None
-        
-        values = []
-        resolution = {}
-        
-        parameter_resolution = {} if self.use_softmax else None
-        
-        
-        for i in range(num_iters):
-            
-            artificial_upper_bound = None # if current_value is None else current_value * (0.9 if self.minimizing else 1.1)
-            
-            if i > 0:
-                fsc = self.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, self.nO, self.pomdp_sketch.observation_to_actions)                
-                dtmc_sketch =  self.pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
-                synthesizer = paynt.synthesizer.synthesizer_ar.SynthesizerAR(dtmc_sketch)
-                hole_assignment = synthesizer.synthesize(optimum_threshold=artificial_upper_bound, keep_optimum=True)
-                paynt_value = synthesizer.best_assignment_value
-                print("Paynt value:", paynt_value, "previous family best:", best_family_value)
-                op = operator.lt if self.minimizing else operator.gt
-                if op(paynt_value, best_family_value):
-                    best_fsc = fsc
-                    best_family_value = paynt_value
-                if random: 
-                    hole_assignment = self.pomdp_sketch.family.pick_random()
+    def paynt_call(self, dtmc_sketch, assignments = None, artificial_upper_bound = None, random_selection = False) -> tuple[paynt.family.family.Family, float]:
+        if assignments is None:
+            synthesizer = paynt.synthesizer.synthesizer_ar.SynthesizerAR(dtmc_sketch)
+            hole_assignment = synthesizer.synthesize(optimum_threshold=artificial_upper_bound, keep_optimum=True)
+            paynt_value = synthesizer.best_assignment_value
+            if random_selection: 
+                hole_assignment = self.pomdp_sketch.family.pick_random()
+        else:
+            assert assignments is not None
+            synthesizer = paynt.synthesizer.synthesizer_onebyone.SynthesizerOneByOne(dtmc_sketch)
+            evaluations = np.zeros(len(assignments))
+            for j, family in enumerate(assignments):
+                evaluations[j] = synthesizer.evaluate(family, keep_value_only=True)[0]
+            hole_assignment_idx = np.argmax(evaluations) if self.minimizing else np.argmin(evaluations)
+            paynt_value = evaluations[hole_assignment_idx]
+            if random_selection:
+                hole_assignment = random.choice(assignments)
             else:
-                hole_assignment = self.pomdp_sketch.family.pick_any()
-            
-            current_value, new_resolution, *_ = self.gradient_descent_on_single_pomdp(hole_assignment, 1, num_nodes, action_function_params, memory_function_params, resolution, parameter_resolution)
-            
-            values.append(current_value)
-            
-            resolution = new_resolution
+                hole_assignment = assignments[hole_assignment_idx]
         
-        return best_fsc, best_family_value
+        return hole_assignment, paynt_value
     
     def sanity_check_pmc_at_instantiation(self, pmc : stormpy.storage.SparseParametricDtmc, resolution : dict[pycarl.Variable, pc.Rational]):
         # if not self.use_softmax:
@@ -647,16 +627,20 @@ class POMDPFamiliesSynthesis:
                     
             instantiator = stormpy.pars.PDtmcInstantiator(pmc)            
             instantiated_model = instantiator.instantiate(resolution)
-            print(instantiated_model)
+            # print(instantiated_model)
                     
             print("pMC shoud be ok.")
 
-    def __init__(self, project_path : str, seed : int = 11, use_softmax : bool = False):
+    def __init__(self, project_path : str, seed : int = 11, use_softmax : bool = False, learning_rate = 0.001, minibatch_size = 256, steps = 10):
         random.seed(seed)
         np.random.seed(seed)
 
         # enable PAYNT logging
         paynt.cli.setup_logger()
+        
+        self.lr = learning_rate
+        self.mbs = minibatch_size
+        self.gd_steps = steps
 
         # load sketch
         self.pomdp_sketch = self.load_sketch(project_path)

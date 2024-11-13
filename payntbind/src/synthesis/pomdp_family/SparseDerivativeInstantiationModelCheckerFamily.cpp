@@ -136,6 +136,8 @@ void SparseDerivativeInstantiationModelCheckerFamily<FunctionType, ConstantType>
         /*         formula->asProbabilityOperatorFormula().getSubformula().asSharedPointer(), opInfo); */
     }
 
+    STORM_PRINT_AND_LOG("1\n");
+
     generalSetupWatch.start();
 
     storm::solver::GeneralLinearEquationSolverFactory<ConstantType> factory;
@@ -190,6 +192,8 @@ void SparseDerivativeInstantiationModelCheckerFamily<FunctionType, ConstantType>
         next &= targetProbOne;
     }
 
+    STORM_PRINT_AND_LOG("2\n");
+
     auto transitionMatrix = model.getTransitionMatrix();
     std::map<uint_fast64_t, uint_fast64_t> stateNumToEquationSystemRow;
     uint_fast64_t newRow = 0;
@@ -207,6 +211,8 @@ void SparseDerivativeInstantiationModelCheckerFamily<FunctionType, ConstantType>
         // go from x = A*x + b to (I-A)x = b.
         constrainedMatrixEquationSystem.convertToEquationSystem();
     }
+
+    STORM_PRINT_AND_LOG("3\n");
 
     // Setup instantiated constrained matrix
     storage::SparseMatrixBuilder<ConstantType> instantiatedSystemBuilder;
@@ -232,6 +238,8 @@ void SparseDerivativeInstantiationModelCheckerFamily<FunctionType, ConstantType>
         matrixBuilders[var] = storage::SparseMatrixBuilder<FunctionType>(constrainedMatrix.getRowCount());
         instantiatedMatrixBuilders[var] = storage::SparseMatrixBuilder<ConstantType>(constrainedMatrix.getRowCount());
     }
+
+    STORM_PRINT_AND_LOG("4\n");
 
     for (uint_fast64_t row = 0; row < constrainedMatrix.getRowCount(); ++row) {
         for (storage::MatrixEntry<uint_fast64_t, storm::RationalFunction> const& entry : constrainedMatrix.getRow(row)) {
@@ -301,6 +309,8 @@ void SparseDerivativeInstantiationModelCheckerFamily<FunctionType, ConstantType>
     //     //     std::make_unique<SignedGradientDescentTerminationCondition<ConstantType>>(initialState);
     //     // this->linearEquationSolvers[param]->setTerminationCondition(std::move(terminationCondition));
     // }
+
+     STORM_PRINT_AND_LOG("5\n");
 }
 
 template<typename FunctionType, typename ConstantType>
