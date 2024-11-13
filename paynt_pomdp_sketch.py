@@ -349,36 +349,36 @@ def main():
     
     num_nodes = 2
     
-    results = {}
+    # results = {}
     
-    for i, hole_combination in enumerate(pomdp_sketch.family.all_combinations()):
-        # print(hole_combination)
-        assignment = pomdp_sketch.family.construct_assignment(hole_combination)
-        pomdp = pomdp_sketch.build_pomdp(assignment).model
-        pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, pomdp_sketch.specification)
-        # current_pomdp = 
-        fsc = solve_pomdp_paynt(pomdp_quotient, pomdp_sketch.specification, num_nodes, timeout=2)
-        print(fsc.action_function, pomdp_sketch.observation_to_actions, pomdp_quotient.action_labels_at_observation, pomdp_sketch.action_labels)
+    # for i, hole_combination in enumerate(pomdp_sketch.family.all_combinations()):
+    #     # print(hole_combination)
+    #     assignment = pomdp_sketch.family.construct_assignment(hole_combination)
+    #     pomdp = pomdp_sketch.build_pomdp(assignment).model
+    #     pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, pomdp_sketch.specification)
+    #     # current_pomdp = 
+    #     fsc = solve_pomdp_paynt(pomdp_quotient, pomdp_sketch.specification, num_nodes, timeout=2)
+    #     print(fsc.action_function, pomdp_sketch.observation_to_actions, pomdp_quotient.action_labels_at_observation, pomdp_sketch.action_labels)
 
-        for n in range(num_nodes):
-            for o in range(len(fsc.action_function[n])):
-                if len(pomdp_quotient.action_labels_at_observation[o]) == 1: continue
-                a = fsc.action_function[n][o]
-                strings = pomdp_quotient.action_labels_at_observation[o]
-                print(a, strings, pomdp_sketch.action_labels, pomdp_quotient.actions_at_observation[o])
-                print(dir(pomdp_quotient))
-                exit()
+    #     for n in range(num_nodes):
+    #         for o in range(len(fsc.action_function[n])):
+    #             if len(pomdp_quotient.action_labels_at_observation[o]) == 1: continue
+    #             a = fsc.action_function[n][o]
+    #             strings = pomdp_quotient.action_labels_at_observation[o]
+    #             print(a, strings, pomdp_sketch.action_labels, pomdp_quotient.actions_at_observation[o])
+    #             print(dir(pomdp_quotient))
+    #             # exit()
                 
                 
-        # print([pomdp_sketch.action_labels.index(action_string) for action_string in ])
-        fsc.action_function = [[pomdp_sketch.observation_to_actions[o][fsc.action_function[n][o]] for o in range(len(fsc.action_function[n]))] for n in range(num_nodes)]
-        dtmc_sketch = pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
-        one_by_one = paynt.synthesizer.synthesizer_onebyone.SynthesizerOneByOne(dtmc_sketch)
-        evaluation = one_by_one.evaluate_all(dtmc_sketch, formula, keep_value_only=True)
-        print(evaluation)
-        results[hole_assignment] = (fsc, evaluation)
+    #     # print([pomdp_sketch.action_labels.index(action_string) for action_string in ])
+    #     fsc.action_function = [[pomdp_sketch.observation_to_actions[o][fsc.action_function[n][o]] for o in range(len(fsc.action_function[n]))] for n in range(num_nodes)]
+    #     dtmc_sketch = pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
+    #     one_by_one = paynt.synthesizer.synthesizer_onebyone.SynthesizerOneByOne(dtmc_sketch)
+    #     evaluation = one_by_one.evaluate_all(dtmc_sketch, formula, keep_value_only=True)
+    #     print(evaluation)
+    #     results[hole_assignment] = (fsc, evaluation)
         
-    print(results)
+    # print(results)
     
     task = stormpy.ParametricCheckTask(pomdp_sketch.get_property().formula, only_initial_states=False)
     
@@ -455,7 +455,7 @@ def main():
     checker = payntbind.synthesis.SparseDerivativeInstantiationModelCheckerFamily(pmc) 
     checker.specifyFormula(env, task)
     
-    wrapper = payntbind.synthesis.GradientDescentInstantiationSearcherFamily(pmc)
+    # wrapper = payntbind.synthesis.GradientDescentInstantiationSearcherFamily(pmc)
     # synth_task = payntbind.synthesis.FeasibilitySynthesisTask(formula)
     # synth_task.set_bound(formula.comparison_type, formula.threshold_expr)
     # wrapper.setup(env, synth_task)
