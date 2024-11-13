@@ -43,11 +43,11 @@ def sign(x):
     else:
         return 1 if x > 0 else -1
     
-def stablesoftmax(x):
+def stablesoftmax(x, temperature = 1):
     """Compute the softmax of vector x in a numerically stable way."""
     assert len(x.shape) <= 1, "Not implemented for arrays of dimension greater than 1."
     shiftx = x - np.max(x)
-    exps = np.exp(shiftx)
+    exps = np.exp(shiftx / temperature)
     return exps / np.sum(exps)
 
 class POMDPFamiliesSynthesis:
@@ -185,7 +185,7 @@ class POMDPFamiliesSynthesis:
         for i, assignment in enumerate(hole_assignments_to_test):
             
             if method.value == method.GRADIENT.value:
-                value, resolution, action_function_params, memory_function_params, *_ = self.gradient_descent_on_single_pomdp(assignment, 100, num_nodes, timeout=timeout)
+                value, resolution, action_function_params, memory_function_params, *_ = self.gradient_descent_on_single_pomdp(assignment, 100, num_nodes, timeout=timeout, parameter_resolution={})
                 print(i, assignment, value)
                 fsc = self.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, nO, self.pomdp_sketch.observation_to_actions)
             elif method.value > method.GRADIENT.value:
@@ -317,7 +317,7 @@ class POMDPFamiliesSynthesis:
                                     p_a_name = f"p{counter}_n{n}_o{o}_a{quotient_action}"
                                     assert pycarl.variable_with_name(p_a_name).is_no_variable, (p_a_name, action_function_params)
                                     act_param = pycarl.Variable(p_a_name)
-                                    if self.use_softmax: parameter_resolution[act_param] = 0
+                                    if self.use_softmax: parameter_resolution[act_param] = random.normalvariate()
                                     resolution[act_param] = pc.Rational(1 / len(pomdp_sketch.observation_to_actions[o]) + 1e-6)
                                     counter += 1
                                     
@@ -339,7 +339,7 @@ class POMDPFamiliesSynthesis:
                                     assert pycarl.variable_with_name(p_o_name).is_no_variable, (p_o_name, action_function_params)
                                     mem_param = pycarl.Variable(p_o_name)
                                     resolution[mem_param] = pc.Rational(1 / num_nodes + 1e-6)
-                                    if self.use_softmax: parameter_resolution[mem_param] = 0
+                                    if self.use_softmax: parameter_resolution[mem_param] = random.normalvariate()
                                     memory_function_params[mem_tup] = mem_param
                                     counter += 1
 
@@ -419,17 +419,19 @@ class POMDPFamiliesSynthesis:
             for o in range(self.nO):
                 action_params = []
                 action_params = [action_function_params[n,o,a] for a in range(self.nA) if (n,o,a) in action_function_params]
-                softmax_action_probs = stablesoftmax(np.array([float(parameter_resolution[var]) for var in action_params if var in parameter_resolution]))
+                action_parameter_values = np.array([float(parameter_resolution[var]) for var in action_params if var in parameter_resolution])
+                softmax_action_probs = stablesoftmax(action_parameter_values)
                 assert math.isclose(sum(softmax_action_probs), 1)
                 for var, softmax_prob in zip(action_params, softmax_action_probs):
-                    assert softmax_prob > 0 and softmax_prob <= 1
+                    assert softmax_prob > 0 and softmax_prob <= 1, (softmax_action_probs, action_parameter_values)
                     probabilistic_resolution[var] = pycarl.cln.cln.Rational(softmax_prob)
                     
                 node_params = [memory_function_params[n,o,m] for m in range(num_nodes) if (n,o,m) in memory_function_params]
+                memory_parameter_values = np.array([float(parameter_resolution[var]) for var in node_params if var in parameter_resolution])
                 softmax_memory_probs = stablesoftmax(np.array([float(parameter_resolution[var]) for var in node_params]))
                 assert math.isclose(sum(softmax_memory_probs), 1)
                 for var, softmax_prob in zip(node_params, softmax_memory_probs):
-                    assert softmax_prob > 0 and softmax_prob <= 1
+                    assert softmax_prob > 0 and softmax_prob <= 1, (softmax_memory_probs, memory_parameter_values)
                     probabilistic_resolution[var] = pycarl.cln.cln.Rational(softmax_prob)
         
         return probabilistic_resolution
@@ -444,9 +446,9 @@ class POMDPFamiliesSynthesis:
             resolution = self.resolution_to_softmax(action_function_params, memory_function_params, parameter_resolution, num_nodes)
             self.sanity_check_pmc_at_instantiation(pmc, resolution)
             checker = payntbind.synthesis.SparseDerivativeInstantiationModelCheckerFamily(pmc)
-            task = stormpy.ParametricCheckTask(self.pomdp_sketch.get_property().copy().formula, only_initial_states=False)
+            task = stormpy.ParametricCheckTask(self.pomdp_sketch.get_property().formula, only_initial_states=False)
             checker.specifyFormula(stormpy.Environment(), task)
-            exit()
+            # exit()
         else:
             wrapper = payntbind.synthesis.GradientDescentInstantiationSearcherFamily(pmc, self.lr, self.mbs, self.gd_steps)
             wrapper.setup(self.env, self.synth_task)
@@ -460,15 +462,64 @@ class POMDPFamiliesSynthesis:
         if timeout:
             tik = time.time()
         
+        # for thing, other in resolution.items():
+            # print(thing, other)
+
+        # print(result)
+        
+        # print(pmc.collect_all_parameters(), resolution.values())
+        
+        # print("ALL PARAM:", set(pmc.collect_all_parameters()), "RESOLUTION:", set(list(resolution.keys())), sep='\n\n')
+        
+        # print("RESOLUTION:", resolution)
+        
+        assert set(pmc.collect_all_parameters()) == set(list(resolution.keys()))
+        
+        
         for i in range(num_iters):
-            try:
-                wrapper.resetDynamicValues()
-                self.sanity_check_pmc_at_instantiation(pmc, resolution)
-                current_value, resolution = wrapper.stochasticGradientDescent(resolution)
-            except Exception as e:
-                print([float(x) for x in resolution.values()])
-                self.sanity_check_pmc_at_instantiation(pmc, resolution)
-                raise e
+            if self.use_softmax:
+                new_resolution = {}
+                new_parameter_resolution = {}
+                grads = {}
+                direction_operator = operator.sub if self.minimizing else operator.add
+                for p in pmc.collect_all_parameters():
+                    res = checker.check(self.env, resolution, p)
+                    # if self.minimizing:
+                        # update = float(parameter_resolution[p]) - self.lr * (res.at(0))
+                    # else:
+                        # update = float(parameter_resolution[p]) + self.lr * (res.at(0))
+                    # for j in pmc.collect_all_parameters():
+                        # resolution[p] * 
+                            
+                    # corrected = pc.Rational(min(max(update, 0), 1))
+                    # print(update, float(corrected))
+                    # assert corrected >= 0 and corrected <= 1
+                    grads[p] = np.clip((res.at(0)), -5, 5)
+                # print(grads)
+                for i in pmc.collect_all_parameters(): 
+                    for j in pmc.collect_all_parameters(): # TODO: only have to differentiate with respect to the others variables that were inside the same softmax. Not all other variables.
+                        softmaxgrad = (parameter_resolution[i] * ((1 if i == j else 0) - parameter_resolution[j])) * grads[j]
+                        new_parameter_resolution[j] = direction_operator(float(parameter_resolution[j]), self.lr * softmaxgrad)
+                    
+                    # assert new_resolution[p] >= 0
+                # print(new_parameter_resolution)
+                # exit()
+                new_resolution = self.resolution_to_softmax(action_function_params, memory_function_params, new_parameter_resolution, num_nodes)
+                instantiator = stormpy.pars.PDtmcInstantiator(pmc)
+                instantiated_model = instantiator.instantiate(new_resolution)
+                result = stormpy.model_checking(instantiated_model, self.pomdp_sketch.get_property().property.raw_formula)
+                current_value = result.at(0)
+                parameter_resolution = new_parameter_resolution
+                resolution = new_resolution
+            else:
+                try:
+                    wrapper.resetDynamicValues()
+                    self.sanity_check_pmc_at_instantiation(pmc, resolution)
+                    current_value, resolution = wrapper.stochasticGradientDescent(resolution)
+                except Exception as e:
+                    print([float(x) for x in resolution.values()])
+                    self.sanity_check_pmc_at_instantiation(pmc, resolution)
+                    raise e
             print(i, current_value)
             if timeout and time.time() - tik > timeout:
                 break

@@ -20,12 +20,12 @@ subfamily_assigments = gd.create_random_subfamily(5)
 
 
 
-# subfamily_other_results = gd.experiment_on_subfamily([subfamily_assigments[1]], 3, Method.GRADIENT, timeout=100, evaluate_on_whole_family=True)
+subfamily_other_results = gd.experiment_on_subfamily([subfamily_assigments[1]], 3, Method.GRADIENT, timeout=None, evaluate_on_whole_family=True)
 
 # import pickle
 # print(subfamily_other_results)
 # with open("./output.pickle", 'wb') as handle:
     # pickle.dump(subfamily_other_results, handle)
 
-best_gd_fsc, subfamily_gd_best_value = gd.run_gradient_descent_on_family(1000, 2, subfamily_assigments, timeout=10)
+# best_gd_fsc, subfamily_gd_best_value = gd.run_gradient_descent_on_family(100000, 2, subfamily_assigments, timeout=None)
 # print(subfamily_gd_best_value)
