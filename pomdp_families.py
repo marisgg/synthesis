@@ -43,7 +43,7 @@ def sign(x):
     else:
         return 1 if x > 0 else -1
     
-def stablesoftmax(x, temperature = 1):
+def stablesoftmax(x, temperature = 1) -> np.ndarray:
     """Compute the softmax of vector x in a numerically stable way."""
     assert len(x.shape) <= 1, "Not implemented for arrays of dimension greater than 1."
     shiftx = x - np.max(x)
@@ -185,7 +185,7 @@ class POMDPFamiliesSynthesis:
         for i, assignment in enumerate(hole_assignments_to_test):
             
             if method.value == method.GRADIENT.value:
-                value, resolution, action_function_params, memory_function_params, *_ = self.gradient_descent_on_single_pomdp(assignment, 100, num_nodes, timeout=timeout, parameter_resolution={})
+                value, resolution, action_function_params, memory_function_params, *_ = self.gradient_descent_on_single_pomdp(assignment, 1000, num_nodes, timeout=timeout, parameter_resolution={})
                 print(i, assignment, value)
                 fsc = self.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, nO, self.pomdp_sketch.observation_to_actions)
             elif method.value > method.GRADIENT.value:
@@ -421,6 +421,7 @@ class POMDPFamiliesSynthesis:
                 action_params = [action_function_params[n,o,a] for a in range(self.nA) if (n,o,a) in action_function_params]
                 action_parameter_values = np.array([float(parameter_resolution[var]) for var in action_params if var in parameter_resolution])
                 softmax_action_probs = stablesoftmax(action_parameter_values)
+                softmax_action_jacobian = np.diag(softmax_action_probs) - np.inner(softmax_action_probs, softmax_action_probs)
                 assert math.isclose(sum(softmax_action_probs), 1)
                 for var, softmax_prob in zip(action_params, softmax_action_probs):
                     assert softmax_prob > 0 and softmax_prob <= 1, (softmax_action_probs, action_parameter_values)
@@ -429,6 +430,7 @@ class POMDPFamiliesSynthesis:
                 node_params = [memory_function_params[n,o,m] for m in range(num_nodes) if (n,o,m) in memory_function_params]
                 memory_parameter_values = np.array([float(parameter_resolution[var]) for var in node_params if var in parameter_resolution])
                 softmax_memory_probs = stablesoftmax(np.array([float(parameter_resolution[var]) for var in node_params]))
+                softmax_memory_jacobian = np.diag(softmax_memory_probs) - np.inner(softmax_memory_probs, softmax_memory_probs)
                 assert math.isclose(sum(softmax_memory_probs), 1)
                 for var, softmax_prob in zip(node_params, softmax_memory_probs):
                     assert softmax_prob > 0 and softmax_prob <= 1, (softmax_memory_probs, memory_parameter_values)
@@ -436,6 +438,40 @@ class POMDPFamiliesSynthesis:
         
         return probabilistic_resolution
 
+    def softmax_gradients(self, action_function_params, memory_function_params, parameter_resolution, num_nodes, gradients):
+        softmax_grad = {}
+        for n in range(num_nodes):
+            for o in range(self.nO):
+                action_params = []
+                action_params = [action_function_params[n,o,a] for a in range(self.nA) if (n,o,a) in action_function_params]
+                action_parameter_values = np.array([float(parameter_resolution[var]) for var in action_params if var in parameter_resolution])
+                action_gradients = np.array([float(gradients[var]) for var in action_params if var in parameter_resolution])
+                softmax_action_probs = stablesoftmax(action_parameter_values)
+                summation_term = np.inner(softmax_action_probs, action_gradients).sum()
+                # softmax_action_jacobian = np.diag(softmax_action_probs) - np.inner(softmax_action_probs, softmax_action_probs)
+                assert math.isclose(softmax_action_probs.sum(), 1)
+                for var, softmax_prob in zip(action_params, softmax_action_probs):
+                    assert softmax_prob > 0 and softmax_prob <= 1, (softmax_action_probs, action_parameter_values)
+                    softmax_grad[var] = softmax_prob * (gradients[var] - summation_term)
+                    
+                node_params = [memory_function_params[n,o,m] for m in range(num_nodes) if (n,o,m) in memory_function_params]
+                memory_parameter_values = np.array([float(parameter_resolution[var]) for var in node_params if var in parameter_resolution])
+                memory_gradients = np.array([float(gradients[var]) for var in node_params if var in parameter_resolution])
+                softmax_memory_probs = stablesoftmax(np.array([float(parameter_resolution[var]) for var in node_params]))
+                # softmax_memory_jacobian = np.diag(softmax_memory_probs) - np.inner(softmax_memory_probs, softmax_memory_probs)
+                summation_term = np.inner(softmax_memory_probs, memory_gradients).sum()
+                assert math.isclose(sum(softmax_memory_probs), 1)
+                for var, softmax_prob in zip(node_params, softmax_memory_probs):
+                    assert softmax_prob > 0 and softmax_prob <= 1, (softmax_memory_probs, memory_parameter_values)
+                    softmax_grad[var] = softmax_prob * (gradients[var] - summation_term)
+        
+        return softmax_grad
+    
+    def clip_gradient(self, x, doclip=True):
+        if doclip:
+            return np.clip(x, -50, 50)
+        else:
+            return x
 
     def gradient_descent_on_single_pomdp(self, hole_assignment, num_iters : int, num_nodes : int, action_function_params = {}, memory_function_params = {}, resolution = {}, parameter_resolution = None, timeout = None):
         pomdp_class = self.pomdp_sketch.build_pomdp(hole_assignment)
@@ -494,13 +530,17 @@ class POMDPFamiliesSynthesis:
                     # corrected = pc.Rational(min(max(update, 0), 1))
                     # print(update, float(corrected))
                     # assert corrected >= 0 and corrected <= 1
-                    grads[p] = np.clip((res.at(0)), -5, 5)
+                    # grads[p] = np.clip((res.at(0)), -5, 5)
+                    grads[p] = self.clip_gradient(res.at(0), doclip=False)
                 # print(grads)
-                for i in pmc.collect_all_parameters(): 
-                    for j in pmc.collect_all_parameters(): # TODO: only have to differentiate with respect to the others variables that were inside the same softmax. Not all other variables.
-                        softmaxgrad = (parameter_resolution[i] * ((1 if i == j else 0) - parameter_resolution[j])) * grads[j]
-                        new_parameter_resolution[j] = direction_operator(float(parameter_resolution[j]), self.lr * softmaxgrad)
-                    
+                
+                # for i in pmc.collect_all_parameters(): 
+                    # for j in pmc.collect_all_parameters(): # TODO: only have to differentiate with respect to the others variables that were inside the same softmax. Not all other variables.
+                        # softmaxgrad = (parameter_resolution[i] * ((1 if i == j else 0) - parameter_resolution[j])) * grads[j]
+                        # new_parameter_resolution[j] = direction_operator(float(parameter_resolution[j]), self.lr * softmaxgrad)
+                softmax_grads = self.softmax_gradients(action_function_params, memory_function_params, parameter_resolution, num_nodes, grads)
+                for p in pmc.collect_all_parameters():
+                    new_parameter_resolution[p] = direction_operator(float(parameter_resolution[p]), self.lr * self.clip_gradient(softmax_grads[p], doclip=True))
                     # assert new_resolution[p] >= 0
                 # print(new_parameter_resolution)
                 # exit()
