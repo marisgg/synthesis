@@ -509,6 +509,11 @@ class POMDPFamiliesSynthesis:
         
         print("Before GD value:", result.at(0))
         
+        if self.use_momentum and self.momentum is None:
+            self.momentum = dict(zip(parameters, [0] * len(parameters)))
+        
+        
+        
         direction_operator = operator.sub if self.minimizing else operator.add
         
         for i in range(num_iters):
@@ -520,7 +525,11 @@ class POMDPFamiliesSynthesis:
                 softmax_grads = self.softmax_gradients(action_function_params, memory_function_params, parameter_resolution, num_nodes, grads)
                 for p in parameters:
                     # TODO: implement momentum of gradients (for each parameter independently) or other optimizer tricks.
-                    new_parameter_resolution[p] = direction_operator(float(parameter_resolution[p]), self.lr * self.clip_gradient(softmax_grads[p], doclip=True))
+                    if self.use_momentum:
+                        self.momentum[p] = self.beta * self.momentum[p] + (1 - self.beta) * self.clip_gradient(softmax_grads[p], doclip=True)
+                        new_parameter_resolution[p] = direction_operator(float(parameter_resolution[p]), self.lr * self.momentum[p])
+                    else:
+                        new_parameter_resolution[p] = direction_operator(float(parameter_resolution[p]), self.lr * self.clip_gradient(softmax_grads[p], doclip=True))
 
                 new_resolution = self.resolution_to_softmax(action_function_params, memory_function_params, new_parameter_resolution, num_nodes)
                 instantiator = stormpy.pars.PDtmcInstantiator(pmc)
@@ -655,6 +664,10 @@ class POMDPFamiliesSynthesis:
         self.lr = learning_rate
         self.mbs = minibatch_size
         self.gd_steps = steps
+        
+        self.use_momentum = True
+        self.momentum = None
+        self.beta = 0.9
 
         # load sketch
         self.pomdp_sketch = self.load_sketch(project_path)

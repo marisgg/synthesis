@@ -1,4 +1,6 @@
 import os
+import stormpy
+import payntbind
 from pomdp_families import POMDPFamiliesSynthesis
 from pomdp_families import Method
 
@@ -14,7 +16,7 @@ def run_family():
     gd.run_gradient_descent_on_family(1000, 2)
 
 def run_family_softmax():
-    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01)
+    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.001)
     gd.run_gradient_descent_on_family(1000, 2)
 
 def run_subfamily(subfamily_size = 10):
@@ -52,5 +54,20 @@ def run_subfamily(subfamily_size = 10):
     print("OURS:", our_evaluations)
 
 # run_family()
-run_family_softmax()
+# run_family_softmax()
 # run_subfamily()
+
+num_assignments = 10
+gd = POMDPFamiliesSynthesis(project_path, use_softmax=False, steps=10)
+assignments = gd.create_random_subfamily(10)
+# assignments = [pomdp_sketch.family.pick_random() for _ in range(num_assignments)]
+# [print(a) for a in assignments]
+
+pomdps = [gd.assignment_to_pomdp(gd.pomdp_sketch,assignment) for assignment in assignments]
+# [print(pomdp) for pomdp in pomdps]
+
+union_pomdp = payntbind.synthesis.createModelUnion(pomdps)
+print(union_pomdp)
+
+fsc = gd.solve_pomdp_paynt(union_pomdp, gd.pomdp_sketch.specification, 2, timeout=100)
+print(fsc)
