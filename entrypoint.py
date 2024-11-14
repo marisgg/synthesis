@@ -4,14 +4,18 @@ from pomdp_families import Method
 
 # Can try various models.
 # project_path="models/pomdp/sketches/obstacles-8-3"
-# project_path="models/pomdp/sketches/obstacles-10-2"
+project_path="models/pomdp/sketches/obstacles-10-2"
 # project_path="models/pomdp/sketches/avoid"
-project_path="models/pomdp/sketches/dpm"
+# project_path="models/pomdp/sketches/dpm"
 # project_path="models/pomdp/sketches/rover"
 
 def run_family():
+    gd = POMDPFamiliesSynthesis(project_path, use_softmax=False, steps=10)
+    gd.run_gradient_descent_on_family(1000, 2)
+
+def run_family_softmax():
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01)
-    gd.run_gradient_descent_on_family(1000, 5)
+    gd.run_gradient_descent_on_family(1000, 2)
 
 def run_subfamily(subfamily_size = 10):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01)
@@ -47,4 +51,6 @@ def run_subfamily(subfamily_size = 10):
     print("RANDOM:", random_evaluations)
     print("OURS:", our_evaluations)
 
-run_family()
+# run_family()
+run_family_softmax()
+# run_subfamily()

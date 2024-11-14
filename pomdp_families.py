@@ -486,7 +486,6 @@ class POMDPFamiliesSynthesis:
             checker = payntbind.synthesis.SparseDerivativeInstantiationModelCheckerFamily(pmc)
             task = stormpy.ParametricCheckTask(self.pomdp_sketch.get_property().formula, only_initial_states=False)
             checker.specifyFormula(stormpy.Environment(), task)
-            # exit()
         else:
             wrapper = payntbind.synthesis.GradientDescentInstantiationSearcherFamily(pmc, self.lr, self.mbs, self.gd_steps)
             wrapper.setup(self.env, self.synth_task)
@@ -508,20 +507,19 @@ class POMDPFamiliesSynthesis:
         
         parameters = list(resolution.keys())
         
+        print("Before GD value:", result.at(0))
+        
+        direction_operator = operator.sub if self.minimizing else operator.add
+        
         for i in range(num_iters):
             if self.use_softmax:
                 new_resolution = {}
                 new_parameter_resolution = {}
                 grads = {}
-                direction_operator = operator.sub if self.minimizing else operator.add
                 grads = checker.checkMultipleParameters(self.env, resolution, parameters, result.get_values())
-                # grads = {var : grad for var, grad in zip(resolution.keys(), grads)}
-                # for p in resolution.keys():
-                    # res = checker.check(self.env, resolution, p, result.get_values())
-                    # grads[p] = self.clip_gradient(res.at(0), doclip=False)
-
                 softmax_grads = self.softmax_gradients(action_function_params, memory_function_params, parameter_resolution, num_nodes, grads)
-                for p in resolution.keys():
+                for p in parameters:
+                    # TODO: implement momentum of gradients (for each parameter independently) or other optimizer tricks.
                     new_parameter_resolution[p] = direction_operator(float(parameter_resolution[p]), self.lr * self.clip_gradient(softmax_grads[p], doclip=True))
 
                 new_resolution = self.resolution_to_softmax(action_function_params, memory_function_params, new_parameter_resolution, num_nodes)
@@ -587,7 +585,11 @@ class POMDPFamiliesSynthesis:
             
             current_value, new_resolution, action_function_params, memory_function_params, parameter_resolution = self.gradient_descent_on_single_pomdp(hole_assignment, 10 // self.gd_steps, num_nodes, action_function_params, memory_function_params, resolution, parameter_resolution)
             
+            
+            
             values.append(current_value)
+            
+            print(f"{i} | Latest GD value: {current_value}")
             
             resolution = new_resolution
         

@@ -63,6 +63,12 @@ void bindings_pomdp_family(py::module& m) {
             storm::derivative::SparseDerivativeInstantiationModelCheckerFamily<storm::RationalFunction,double> & der,
             storm::Environment const& env,
             storm::utility::parametric::Valuation<storm::RationalFunction> const& valuation,
+            typename storm::utility::parametric::VariableType<storm::RationalFunction>::type const& parameter
+        ) { return der.check(env,valuation,parameter); })
+        .def("checkWithValue", [](
+            storm::derivative::SparseDerivativeInstantiationModelCheckerFamily<storm::RationalFunction,double> & der,
+            storm::Environment const& env,
+            storm::utility::parametric::Valuation<storm::RationalFunction> const& valuation,
             typename storm::utility::parametric::VariableType<storm::RationalFunction>::type const& parameter,
             std::vector<double> const& valueVector
         ) { return der.check(env,valuation,parameter,valueVector); })
