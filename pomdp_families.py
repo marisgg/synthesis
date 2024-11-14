@@ -173,7 +173,7 @@ class POMDPFamiliesSynthesis:
         hole_assignments_to_test = [self.pomdp_sketch.family.construct_assignment(hole_combination) for hole_combination in hole_combinations]
         return hole_assignments_to_test
 
-    def experiment_on_subfamily(self, hole_assignments_to_test : list, num_nodes : int, method : Method, timeout=15, evaluate_on_whole_family=False):
+    def experiment_on_subfamily(self, hole_assignments_to_test : list, num_nodes : int, method : Method, timeout=15, num_gd_iterations=1000, evaluate_on_whole_family=False):
         results = {}
 
         nO = self.pomdp_sketch.num_observations
@@ -185,7 +185,7 @@ class POMDPFamiliesSynthesis:
         for i, assignment in enumerate(hole_assignments_to_test):
             
             if method.value == method.GRADIENT.value:
-                value, resolution, action_function_params, memory_function_params, *_ = self.gradient_descent_on_single_pomdp(assignment, 1000, num_nodes, timeout=timeout, parameter_resolution={})
+                value, resolution, action_function_params, memory_function_params, *_ = self.gradient_descent_on_single_pomdp(assignment, num_gd_iterations, num_nodes, timeout=timeout, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={})
                 print(i, assignment, value)
                 fsc = self.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, nO, self.pomdp_sketch.observation_to_actions)
             elif method.value > method.GRADIENT.value:
@@ -420,6 +420,7 @@ class POMDPFamiliesSynthesis:
                 action_params = []
                 action_params = [action_function_params[n,o,a] for a in range(self.nA) if (n,o,a) in action_function_params]
                 action_parameter_values = np.array([float(parameter_resolution[var]) for var in action_params if var in parameter_resolution])
+                assert action_parameter_values.size > 0, (n, o, action_params, action_parameter_values)
                 softmax_action_probs = stablesoftmax(action_parameter_values)
                 softmax_action_jacobian = np.diag(softmax_action_probs) - np.inner(softmax_action_probs, softmax_action_probs)
                 assert math.isclose(sum(softmax_action_probs), 1)
@@ -473,6 +474,7 @@ class POMDPFamiliesSynthesis:
         else:
             return x
 
+    # @profile
     def gradient_descent_on_single_pomdp(self, hole_assignment, num_iters : int, num_nodes : int, action_function_params = {}, memory_function_params = {}, resolution = {}, parameter_resolution = None, timeout = None):
         pomdp_class = self.pomdp_sketch.build_pomdp(hole_assignment)
         pomdp = pomdp_class.model
@@ -480,7 +482,7 @@ class POMDPFamiliesSynthesis:
         
         if self.use_softmax:
             resolution = self.resolution_to_softmax(action_function_params, memory_function_params, parameter_resolution, num_nodes)
-            self.sanity_check_pmc_at_instantiation(pmc, resolution)
+            # self.sanity_check_pmc_at_instantiation(pmc, resolution)
             checker = payntbind.synthesis.SparseDerivativeInstantiationModelCheckerFamily(pmc)
             task = stormpy.ParametricCheckTask(self.pomdp_sketch.get_property().formula, only_initial_states=False)
             checker.specifyFormula(stormpy.Environment(), task)
@@ -497,20 +499,14 @@ class POMDPFamiliesSynthesis:
         
         if timeout:
             tik = time.time()
-        
-        # for thing, other in resolution.items():
-            # print(thing, other)
-
-        # print(result)
-        
-        # print(pmc.collect_all_parameters(), resolution.values())
-        
-        # print("ALL PARAM:", set(pmc.collect_all_parameters()), "RESOLUTION:", set(list(resolution.keys())), sep='\n\n')
-        
-        # print("RESOLUTION:", resolution)
+            
+        instantiator = stormpy.pars.PDtmcInstantiator(pmc)
+        instantiated_model = instantiator.instantiate(resolution)
+        result = stormpy.model_checking(instantiated_model, self.pomdp_sketch.get_property().property.raw_formula)
         
         assert set(pmc.collect_all_parameters()) == set(list(resolution.keys()))
         
+        parameters = list(resolution.keys())
         
         for i in range(num_iters):
             if self.use_softmax:
@@ -518,32 +514,16 @@ class POMDPFamiliesSynthesis:
                 new_parameter_resolution = {}
                 grads = {}
                 direction_operator = operator.sub if self.minimizing else operator.add
-                for p in pmc.collect_all_parameters():
-                    res = checker.check(self.env, resolution, p)
-                    # if self.minimizing:
-                        # update = float(parameter_resolution[p]) - self.lr * (res.at(0))
-                    # else:
-                        # update = float(parameter_resolution[p]) + self.lr * (res.at(0))
-                    # for j in pmc.collect_all_parameters():
-                        # resolution[p] * 
-                            
-                    # corrected = pc.Rational(min(max(update, 0), 1))
-                    # print(update, float(corrected))
-                    # assert corrected >= 0 and corrected <= 1
-                    # grads[p] = np.clip((res.at(0)), -5, 5)
-                    grads[p] = self.clip_gradient(res.at(0), doclip=False)
-                # print(grads)
-                
-                # for i in pmc.collect_all_parameters(): 
-                    # for j in pmc.collect_all_parameters(): # TODO: only have to differentiate with respect to the others variables that were inside the same softmax. Not all other variables.
-                        # softmaxgrad = (parameter_resolution[i] * ((1 if i == j else 0) - parameter_resolution[j])) * grads[j]
-                        # new_parameter_resolution[j] = direction_operator(float(parameter_resolution[j]), self.lr * softmaxgrad)
+                grads = checker.checkMultipleParameters(self.env, resolution, parameters, result.get_values())
+                # grads = {var : grad for var, grad in zip(resolution.keys(), grads)}
+                # for p in resolution.keys():
+                    # res = checker.check(self.env, resolution, p, result.get_values())
+                    # grads[p] = self.clip_gradient(res.at(0), doclip=False)
+
                 softmax_grads = self.softmax_gradients(action_function_params, memory_function_params, parameter_resolution, num_nodes, grads)
-                for p in pmc.collect_all_parameters():
+                for p in resolution.keys():
                     new_parameter_resolution[p] = direction_operator(float(parameter_resolution[p]), self.lr * self.clip_gradient(softmax_grads[p], doclip=True))
-                    # assert new_resolution[p] >= 0
-                # print(new_parameter_resolution)
-                # exit()
+
                 new_resolution = self.resolution_to_softmax(action_function_params, memory_function_params, new_parameter_resolution, num_nodes)
                 instantiator = stormpy.pars.PDtmcInstantiator(pmc)
                 instantiated_model = instantiator.instantiate(new_resolution)
@@ -553,8 +533,7 @@ class POMDPFamiliesSynthesis:
                 resolution = new_resolution
             else:
                 try:
-                    wrapper.resetDynamicValues()
-                    self.sanity_check_pmc_at_instantiation(pmc, resolution)
+                    # wrapper.resetDynamicValues()
                     current_value, resolution = wrapper.stochasticGradientDescent(resolution)
                 except Exception as e:
                     print([float(x) for x in resolution.values()])
@@ -606,13 +585,26 @@ class POMDPFamiliesSynthesis:
             else:
                 hole_assignment = self.pomdp_sketch.family.pick_any()
             
-            current_value, new_resolution, *_ = self.gradient_descent_on_single_pomdp(hole_assignment, 10 // self.gd_steps, num_nodes, action_function_params, memory_function_params, resolution, parameter_resolution)
+            current_value, new_resolution, action_function_params, memory_function_params, parameter_resolution = self.gradient_descent_on_single_pomdp(hole_assignment, 10 // self.gd_steps, num_nodes, action_function_params, memory_function_params, resolution, parameter_resolution)
             
             values.append(current_value)
             
             resolution = new_resolution
         
         return best_fsc, best_family_value
+    
+    def get_values_on_subfamily(self, dtmc_sketch, assignments) -> np.ndarray:
+        synthesizer = paynt.synthesizer.synthesizer_onebyone.SynthesizerOneByOne(dtmc_sketch)
+        evaluations = np.zeros(len(assignments))
+        for j, family in enumerate(assignments):
+            evaluations[j] = synthesizer.evaluate(family, keep_value_only=True)[0]
+        return evaluations
+    
+    def get_dtmc_sketch(self, fsc):
+        return self.pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
+    
+    def paynt_call_given_fsc(self, fsc, **kwargs) -> tuple[paynt.family.family.Family, float]:
+        return self.paynt_call(self.get_dtmc_sketch(fsc), **kwargs)
     
     def paynt_call(self, dtmc_sketch, assignments = None, artificial_upper_bound = None, random_selection = False) -> tuple[paynt.family.family.Family, float]:
         if assignments is None:
@@ -623,10 +615,7 @@ class POMDPFamiliesSynthesis:
                 hole_assignment = self.pomdp_sketch.family.pick_random()
         else:
             assert assignments is not None
-            synthesizer = paynt.synthesizer.synthesizer_onebyone.SynthesizerOneByOne(dtmc_sketch)
-            evaluations = np.zeros(len(assignments))
-            for j, family in enumerate(assignments):
-                evaluations[j] = synthesizer.evaluate(family, keep_value_only=True)[0]
+            evaluations = self.get_values_on_subfamily(dtmc_sketch, assignments)
             hole_assignment_idx = np.argmax(evaluations) if self.minimizing else np.argmin(evaluations)
             paynt_value = evaluations[hole_assignment_idx]
             if random_selection:
