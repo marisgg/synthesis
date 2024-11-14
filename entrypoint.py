@@ -62,12 +62,43 @@ gd = POMDPFamiliesSynthesis(project_path, use_softmax=False, steps=10)
 assignments = gd.create_random_subfamily(10)
 # assignments = [pomdp_sketch.family.pick_random() for _ in range(num_assignments)]
 # [print(a) for a in assignments]
+pomdps = [gd.assignment_to_pomdp(gd.pomdp_sketch,assignment)[0] for assignment in assignments]
+print([pomdp for pomdp in pomdps])
+# fsc = gd.solve_pomdp_paynt(pomdps[0], gd.pomdp_sketch.specification, 2, timeout=5)
+# print(fsc)
 
-pomdps = [gd.assignment_to_pomdp(gd.pomdp_sketch,assignment) for assignment in assignments]
-# [print(pomdp) for pomdp in pomdps]
+# exit()
+
+
 
 union_pomdp = payntbind.synthesis.createModelUnion(pomdps)
 print(union_pomdp)
 
-fsc = gd.solve_pomdp_paynt(union_pomdp, gd.pomdp_sketch.specification, 2, timeout=100)
+nodes = 2
+fsc = gd.solve_pomdp_paynt(union_pomdp, gd.pomdp_sketch.specification, nodes, timeout=5)
+initial_node = fsc.update_function[0][-1]
+print("initial node is:", initial_node)
 print(fsc)
+for n in range(nodes):
+    fsc.action_function[n] = fsc.action_function[n][:-1]
+    assert len(fsc.action_function[n]) == gd.nO
+    fsc.update_function[n] = fsc.update_function[n][:-1]
+    assert len(fsc.update_function[n]) == gd.nO
+
+if initial_node == 1:
+    action_function = [None] * nodes
+    update_function = [None] * nodes
+    for n in range(nodes):
+        action_function[n] = fsc.action_function[(n+1) % 2]
+        assert len(action_function[n]) == gd.nO
+        update_function[n] = [(m+1) % nodes for m in fsc.update_function[(n+1) % 2]] # TODO
+        assert len(update_function[n]) == gd.nO
+    fsc.action_function = action_function
+    fsc.update_function = update_function
+fsc.num_observations -= 1
+print(fsc)
+print(gd.pomdp_sketch.observation_to_actions)
+
+print(gd.nO)
+
+print(gd.get_values_on_subfamily(gd.get_dtmc_sketch(fsc), assignments))
