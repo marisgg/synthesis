@@ -124,31 +124,32 @@ def run_union(project_path):
     fsc.num_observations -= 1
 
     # ensure that 0 is the initial node
-    fsc_update_to_pomdp_update = list(range(nodes))
+    fsc_update_fixed = list(range(nodes))
     if initial_node != 0:
-        fsc_update_to_pomdp_update[0] = initial_node
-        fsc_update_to_pomdp_update[initial_node] = 0
+        fsc_update_fixed[0] = initial_node
+        fsc_update_fixed[initial_node] = 0
         tmp = fsc.action_function[0]; fsc.action_function[0] = fsc.action_function[initial_node]; fsc.action_function[initial_node] = tmp
         tmp = fsc.update_function[0]; fsc.update_function[0] = fsc.update_function[initial_node]; fsc.update_function[initial_node] = tmp
+    for n in range(nodes):
+        for o in range(fsc.num_observations):
+            fsc.action_function[n][o] = fsc_update_fixed[fsc.action_function[n][o]]
 
-    # ensure that FSC uses the same ordering of action labels as the POMDP sketch
+    # ensure that FSC uses the same ordering of action labels as the POMDP sketch (required by fsc.check())
     for n in range(nodes):
         for o in range(fsc.num_observations):
             action_label = fsc.action_labels[fsc.action_function[n][o]]
             fsc.action_function[n][o] = gd.pomdp_sketch.action_labels.index(action_label)
     fsc.action_labels = gd.pomdp_sketch.action_labels.copy()
 
-    # map FSC actions to true sketch actions
+    # fix possibly dummy actions
     for n in range(nodes):
         for o in range(fsc.num_observations):
-            fsc_action = fsc.action_function[n][o]
-            fsc_action_label = fsc.action_labels[fsc_action]
+            fsc_action_label = fsc.action_labels[fsc.action_function[n][o]]
             true_action_label = observation_action_to_true_action[o][fsc_action_label]
-            fsc_action = fsc.action_labels.index(true_action_label)
-            fsc.action_function[n][o] = fsc_action
+            fsc.action_function[n][o] = fsc.action_labels.index(true_action_label)
 
     fsc.check(gd.pomdp_sketch.observation_to_actions)
-    exit()
+    return
     # TODO make FSC stochastic ?
 
     print(gd.pomdp_sketch.observation_to_actions)
