@@ -57,7 +57,7 @@ def run_family(project_path):
     gd.run_gradient_descent_on_family(1000, 2)
 
 def run_family_softmax(project_path):
-    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.001)
+    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01)
     gd.run_gradient_descent_on_family(1000, 2)
 
 def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2):
@@ -157,11 +157,12 @@ def run_union(project_path):
     print(gd.get_values_on_subfamily(gd.get_dtmc_sketch(fsc), assignments))
 
 # run_family()
+# run_family_softmax(AVOID)
 # run_family_softmax(OBSTACLES_TEN_TWO)
 # run_family_experiment()
 # run_subfamily(ROVER, timeout=30)
-# for env, timeout in zip(ENVS, [10, 10, 60]):
-    # run_subfamily(env, timeout=timeout)
+for env, timeout in zip(ENVS, [10, 10, 60]):
+    run_subfamily(env, timeout=timeout, subfamily_size=5)
 # run_subfamily(num_nodes=3, timeout=60)
 
 run_union(OBSTACLES_TEN_TWO)

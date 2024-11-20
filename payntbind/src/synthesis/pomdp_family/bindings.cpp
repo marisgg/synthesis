@@ -11,6 +11,10 @@
 #include <storm-pars/utility/FeasibilitySynthesisTask.h>
 #include <storm-pars/derivative/GradientDescentMethod.h>
 
+#include <pybind11/functional.h>
+#include <future>
+#include <thread>
+
 void bindings_pomdp_family(py::module& m) {
 
     py::class_<synthesis::ObservationEvaluator<double>>(m, "ObservationEvaluator")
@@ -79,19 +83,43 @@ void bindings_pomdp_family(py::module& m) {
             std::vector<typename storm::utility::parametric::VariableType<storm::RationalFunction>::type> const& parameters,
             std::vector<double> const& valueVector
         ) { 
-            // std::vector<double> gradients = std::vector<double>(parameters.size());
             std::map<typename storm::utility::parametric::VariableType<storm::RationalFunction>::type, double> gradients = std::map<typename storm::utility::parametric::VariableType<storm::RationalFunction>::type, double>();
-            int i = 0;
             for(typename storm::utility::parametric::VariableType<storm::RationalFunction>::type p : parameters) {
                 double grad = (*der.check(env, valuation, p, valueVector)).getValueVector().at(0);
                 gradients[p] = grad;
-                // gradients[i] = grad;
-                // i++;
+            }
+
+            return gradients;
+            })
+        .def("checkMultipleParametersMT", [](
+            storm::derivative::SparseDerivativeInstantiationModelCheckerFamily<storm::RationalFunction,double> & der,
+            storm::Environment const& env,
+            storm::utility::parametric::Valuation<storm::RationalFunction> const& valuation,
+            std::vector<typename storm::utility::parametric::VariableType<storm::RationalFunction>::type> const& parameters,
+            std::vector<double> const& valueVector
+        ) { 
+            std::map<typename storm::utility::parametric::VariableType<storm::RationalFunction>::type, double> gradients = std::map<typename storm::utility::parametric::VariableType<storm::RationalFunction>::type, double>();
+            // std::map<typename storm::utility::parametric::VariableType<storm::RationalFunction>::type, std::future<double>> gradients = std::map<typename storm::utility::parametric::VariableType<storm::RationalFunction>::type, std::future<double>>();
+
+            for(auto p : parameters) {
+                // double grad = (*der.check(env, valuation, p, valueVector)).getValueVector().at(0);
+                auto myLambda = [](storm::derivative::SparseDerivativeInstantiationModelCheckerFamily<storm::RationalFunction,double> & derr, storm::Environment const& envv, storm::utility::parametric::Valuation<storm::RationalFunction> const& valuationn,  typename storm::utility::parametric::VariableType<storm::RationalFunction>::type const& parameterr, std::vector<double> const& valueVectorr) {
+                    return (*derr.check(envv, valuationn, parameterr, valueVectorr)).getValueVector().at(0);
+                };
+                // std::thread t(std::move(myLambda), std::move(der), std::move(env), std::move(valuation), std::move(p), std::move(valueVector));
+                // t.join();
+                // auto grad = myLambda(der, env, valuation, p, valueVector);
+                // std::future<double> grad = std::async(std::launch::async, &myLambda, der, env, valuation, p, valueVector);
+                // auto grad_result = std::async(std::launch::async, myLambda, der, env, valuation, p, valueVector);
+                // gradients[p] = grad_result.get().getValueVector().at(0);
+                gradients[p] = myLambda(der, env, valuation, p, valueVector);
             }
 
             return gradients;
             })
         ;
+
+    // std::future<>
     
     // py::class_<storm::derivative::GradientDescentMethod>(m, "GradientDescentMethod"); // TODO
     

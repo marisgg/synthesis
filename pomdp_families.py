@@ -58,6 +58,8 @@ class POMDPFamiliesSynthesis:
 
         self.gd_trace = []
         self.family_trace = []
+        
+        self.clip_gradient_value = 5
 
         # enable PAYNT logging
         paynt.cli.setup_logger()
@@ -189,8 +191,8 @@ class POMDPFamiliesSynthesis:
     def solve_pomdp_saynt(self, pomdp, specification, k, timeout=10):
         pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, specification)
         storm_control = paynt.quotient.storm_pomdp_control.StormPOMDPControl()
-        paynt_iter_timeout = 5
-        storm_iter_timeout = 5
+        paynt_iter_timeout = 3
+        storm_iter_timeout = 3
         iterative_storm = (timeout, paynt_iter_timeout, storm_iter_timeout)
         storm_control.set_options(
             storm_options="cutoff", get_storm_result=None, iterative_storm=iterative_storm, use_storm_cutoffs=False,
@@ -506,35 +508,41 @@ class POMDPFamiliesSynthesis:
                 action_parameter_values = np.array([float(parameter_resolution[var]) for var in action_params if var in parameter_resolution])
                 action_gradients = np.array([float(gradients[var]) for var in action_params if var in parameter_resolution])
                 softmax_action_probs = stablesoftmax(action_parameter_values)
+                
                 # softmax_action_jacobian = np.diag(softmax_action_probs) - np.inner(softmax_action_probs, softmax_action_probs)
-                # np.inner(action_gradients, )
-                # for var, softmax_prob in zip(action_params, softmax_action_probs):
-                    # softmax_grad[var]
-                summation_term = np.inner(softmax_action_probs, action_gradients).sum()
-                # softmax_action_jacobian = np.diag(softmax_action_probs) - np.inner(softmax_action_probs, softmax_action_probs)
-                assert math.isclose(softmax_action_probs.sum(), 1)
+                
                 for var, softmax_prob in zip(action_params, softmax_action_probs):
-                    assert softmax_prob > 0 and softmax_prob <= 1, (softmax_action_probs, action_parameter_values)
-                    softmax_grad[var] = softmax_prob * (gradients[var] - summation_term)
-                    
+                    softmax_grad[var] = sum([gradients[var_j] * ((softmax_prob * (1 - softmax_prob_j)) if var == var_j else (-softmax_prob * softmax_prob_j)) for var_j, softmax_prob_j in zip(action_params, softmax_action_probs)])
+
+                # summation_term = np.inner(softmax_action_probs, action_gradients).sum()
+                # assert math.isclose(softmax_action_probs.sum(), 1)
+                # for var, softmax_prob in zip(action_params, softmax_action_probs):
+                #     assert softmax_prob > 0 and softmax_prob <= 1, (softmax_action_probs, action_parameter_values)
+                #     softmax_grad[var] = softmax_prob * (gradients[var] - summation_term)
+                
                 node_params = [memory_function_params[n,o,m] for m in range(num_nodes) if (n,o,m) in memory_function_params]
                 if node_params == []:
                     continue
                 memory_parameter_values = np.array([float(parameter_resolution[var]) for var in node_params if var in parameter_resolution])
                 memory_gradients = np.array([float(gradients[var]) for var in node_params if var in parameter_resolution])
                 softmax_memory_probs = stablesoftmax(np.array([float(parameter_resolution[var]) for var in node_params]))
+                
                 # softmax_memory_jacobian = np.diag(softmax_memory_probs) - np.inner(softmax_memory_probs, softmax_memory_probs)
-                summation_term = np.inner(softmax_memory_probs, memory_gradients).sum()
-                assert math.isclose(sum(softmax_memory_probs), 1)
+
                 for var, softmax_prob in zip(node_params, softmax_memory_probs):
-                    assert softmax_prob > 0 and softmax_prob <= 1, (softmax_memory_probs, memory_parameter_values)
-                    softmax_grad[var] = softmax_prob * (gradients[var] - summation_term)
-        
+                    softmax_grad[var] = sum([gradients[var_j] * ((softmax_prob * (1 - softmax_prob_j)) if var == var_j else (-softmax_prob * softmax_prob_j)) for var_j, softmax_prob_j in zip(node_params, softmax_memory_probs)])
+
+                # summation_term = np.inner(softmax_memory_probs, memory_gradients).sum()
+                # assert math.isclose(sum(softmax_memory_probs), 1)
+                # for var, softmax_prob in zip(node_params, softmax_memory_probs):
+                #     assert softmax_prob > 0 and softmax_prob <= 1, (softmax_memory_probs, memory_parameter_values)
+                #     softmax_grad[var] = softmax_prob * (gradients[var] - summation_term)
+
         return softmax_grad
     
     def clip_gradient(self, x, doclip=True):
         if doclip:
-            return np.clip(x, -50, 50)
+            return np.clip(x, -self.clip_gradient_value, self.clip_gradient_value)
         else:
             return x
 
