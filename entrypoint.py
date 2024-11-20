@@ -91,7 +91,7 @@ def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2
     with open(f"{dr}/ours.pickle", 'wb') as handle:
         pickle.dump(our_results, handle)
 
-def run_union(project_path):
+def run_union(project_path, method):
     num_assignments = 10
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=False, steps=10)
     assignments = gd.create_random_subfamily(num_assignments)
@@ -112,7 +112,7 @@ def run_union(project_path):
     union_pomdp = payntbind.synthesis.createModelUnion(pomdps)
 
     nodes = 2
-    fsc = gd.solve_pomdp_paynt(union_pomdp, gd.pomdp_sketch.specification, nodes, timeout=5)
+    fsc = gd.solve_pomdp_saynt(union_pomdp, gd.pomdp_sketch.specification, nodes, timeout=15)
 
     # get rid of the fresh observation
     initial_node = fsc.update_function[0][-1]
@@ -121,6 +121,7 @@ def run_union(project_path):
         assert len(fsc.action_function[n]) == gd.nO
         fsc.update_function[n] = fsc.update_function[n][:-1]
         assert len(fsc.update_function[n]) == gd.nO
+
     fsc.num_observations -= 1
 
     # ensure that 0 is the initial node
@@ -132,7 +133,7 @@ def run_union(project_path):
         tmp = fsc.update_function[0]; fsc.update_function[0] = fsc.update_function[initial_node]; fsc.update_function[initial_node] = tmp
     for n in range(nodes):
         for o in range(fsc.num_observations):
-            fsc.action_function[n][o] = fsc_update_fixed[fsc.action_function[n][o]]
+            fsc.update_function[n][o] = fsc_update_fixed[fsc.update_function[n][o]]
 
     # ensure that FSC uses the same ordering of action labels as the POMDP sketch (required by fsc.check())
     for n in range(nodes):
@@ -149,8 +150,14 @@ def run_union(project_path):
             fsc.action_function[n][o] = fsc.action_labels.index(true_action_label)
 
     fsc.check(gd.pomdp_sketch.observation_to_actions)
-    return
+    # return
     # TODO make FSC stochastic ?
+    
+    print(fsc)
+    
+    fsc = gd.deterministic_fsc_to_stochastic_fsc(fsc)
+    
+    print(fsc)
 
     print(gd.pomdp_sketch.observation_to_actions)
 
@@ -161,8 +168,8 @@ def run_union(project_path):
 # run_family_softmax(OBSTACLES_TEN_TWO)
 # run_family_experiment()
 # run_subfamily(ROVER, timeout=30)
-for env, timeout in zip(ENVS, [10, 10, 60]):
-    run_subfamily(env, timeout=timeout, subfamily_size=5)
+# for env, timeout in zip(ENVS, [10, 10, 60]):
+    # run_subfamily(env, timeout=timeout, subfamily_size=5)
 # run_subfamily(num_nodes=3, timeout=60)
 
 run_union(OBSTACLES_TEN_TWO)

@@ -204,7 +204,7 @@ class POMDPFamiliesSynthesis:
         synthesizer.run(optimum_threshold=None)
         assert synthesizer.storm_control.latest_paynt_result_fsc is not None
         fsc = synthesizer.storm_control.latest_paynt_result_fsc
-        return fsc, None # replacing None with synthesizer stores the classes in a list to not delete the objects, but to no avail.
+        return fsc
 
     def random_fsc(self, pomdp_sketch, num_nodes):
         num_obs = pomdp_sketch.num_observations
@@ -226,6 +226,24 @@ class POMDPFamiliesSynthesis:
         hole_combinations = random.choices(list(self.pomdp_sketch.family.all_combinations()), k = family_size)
         hole_assignments_to_test = [self.pomdp_sketch.family.construct_assignment(hole_combination) for hole_combination in hole_combinations]
         return hole_assignments_to_test
+    
+    def deterministic_fsc_to_stochastic_fsc(self, fsc):
+        for n in range(fsc.num_nodes):
+            for o in range(self.nO):
+                if o >= len(fsc.action_function[n]):
+                    fsc.action_function[n].append({int(a) : 1 / len(self.pomdp_sketch.observation_to_actions[o]) for a in self.pomdp_sketch.observation_to_actions[o]})
+                    fsc.update_function[n].append({int(m) : 1 / fsc.num_nodes for m in range(fsc.num_nodes)})
+                else:
+                    a = fsc.action_function[n][o]
+                    action_label = fsc.action_labels[a]
+                    family_action = self.pomdp_sketch.action_labels.index(action_label)
+                    assert family_action in self.pomdp_sketch.observation_to_actions[o]
+                    fsc.action_function[n][o] = {int(family_action) : 1.0}
+                    fsc.update_function[n][o] = {int(fsc.update_function[n][o]) : 1.0}
+
+        assert all([len(fsc.action_function[n]) == self.nO for n in range(fsc.num_nodes)])
+        fsc.is_deterministic = False
+        return fsc
 
     def experiment_on_subfamily(self, hole_assignments_to_test : list, num_nodes : int, method : Method, timeout=15, num_gd_iterations=1000, evaluate_on_whole_family=False):
         results = {}
@@ -252,26 +270,11 @@ class POMDPFamiliesSynthesis:
                 pomdp = pomdp.model
                 specification = self.pomdp_sketch.specification.copy()
                 if method.value == method.SAYNT.value:
-                    fsc, objects = self.solve_pomdp_saynt(pomdp, specification, num_nodes, timeout=timeout) # GO OOM
-                    dummy.append(objects)
+                    fsc = self.solve_pomdp_saynt(pomdp, specification, num_nodes, timeout=timeout)
                 else:
                     fsc = self.solve_pomdp_paynt(pomdp, specification, num_nodes, timeout=timeout)
 
-                for n in range(fsc.num_nodes):
-                    for o in range(nO):
-                        if o >= len(fsc.action_function[n]):
-                            fsc.action_function[n].append({a : 1 / len(self.pomdp_sketch.observation_to_actions[o]) for a in self.pomdp_sketch.observation_to_actions[o]})
-                            fsc.update_function[n].append({m : 1 / num_nodes for m in range(fsc.num_nodes)})
-                        else:
-                            a = fsc.action_function[n][o]
-                            action_label = fsc.action_labels[a]
-                            family_action = self.pomdp_sketch.action_labels.index(action_label)
-                            assert family_action in self.pomdp_sketch.observation_to_actions[o]
-                            fsc.action_function[n][o] = {family_action : 1.0}
-                            fsc.update_function[n][o] = {fsc.update_function[n][o] : 1.0}
-
-                assert all([len(fsc.action_function[n]) == nO for n in range(fsc.num_nodes)])
-                fsc.is_deterministic = False
+                fsc = self.deterministic_fsc_to_stochastic_fsc(fsc)
                 fsc.num_observations = nO
 
             dtmc_sketch = self.pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
