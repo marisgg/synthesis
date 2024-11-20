@@ -109,10 +109,11 @@ class POMDPFamiliesSynthesis:
         pomdp_sketch = paynt.parser.sketch.Sketch.load_sketch(sketch_path, properties_path)
         return pomdp_sketch
 
-    def assignment_to_pomdp(self, pomdp_sketch, assignment):
+    def assignment_to_pomdp(self, pomdp_sketch, assignment, restore_absorbing_states=True):
         pomdp = pomdp_sketch.build_pomdp(assignment).model
-        updated = payntbind.synthesis.restoreActionsInAbsorbingStates(pomdp)
-        if updated is not None: pomdp = updated
+        if restore_absorbing_states:
+            updated = payntbind.synthesis.restoreActionsInAbsorbingStates(pomdp)
+            if updated is not None: pomdp = updated
         action_labels,_ = payntbind.synthesis.extractActionLabels(pomdp)
         num_actions = len(action_labels)
         pomdp,choice_to_true_action = payntbind.synthesis.enableAllActions(pomdp)
@@ -121,12 +122,13 @@ class POMDPFamiliesSynthesis:
             obs = pomdp.observations[state]
             if observation_action_to_true_action[obs] is not None:
                 continue
-            observation_action_to_true_action[obs] = [None] * num_actions
+            observation_action_to_true_action[obs] = {}
             choice_0 = pomdp.transition_matrix.get_row_group_start(state)
-            for action in range(num_actions):
+            for action,action_label in enumerate(action_labels):
                 choice = choice_0+action
                 true_action = choice_to_true_action[choice]
-                observation_action_to_true_action[obs][action] = true_action
+                true_action_label = action_labels[true_action]
+                observation_action_to_true_action[obs][action_label] = true_action_label
         return pomdp,observation_action_to_true_action
 
     def solve_pomdp_paynt(self, pomdp, specification, k, timeout=1):
