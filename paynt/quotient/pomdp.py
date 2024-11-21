@@ -732,6 +732,8 @@ class PomdpQuotient(paynt.quotient.quotient.Quotient):
         fsc.fill_implicit_actions_and_updates()
 
         fsc.check(observation_to_actions)
+        
+        fsc.memory_model = self.observation_memory_size.copy()
 
         return fsc
 

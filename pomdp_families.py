@@ -257,7 +257,7 @@ class POMDPFamiliesSynthesis:
         for i, assignment in enumerate(hole_assignments_to_test):
             
             if method.value == method.GRADIENT.value:
-                value, resolution, action_function_params, memory_function_params, *_ = self.gradient_descent_on_single_pomdp(assignment, num_gd_iterations, num_nodes, timeout=timeout, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={})
+                value, resolution, action_function_params, memory_function_params, *_ = self.gradient_descent_on_single_pomdp_from_hole_assignment(assignment, num_gd_iterations, num_nodes, timeout=timeout, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={})
                 print(i, assignment, value)
                 fsc = self.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, nO, self.pomdp_sketch.observation_to_actions)
             elif method.value > method.GRADIENT.value:
@@ -374,7 +374,7 @@ class POMDPFamiliesSynthesis:
                                     p_a_name = f"p{counter}_n{n}_o{o}_a{quotient_action}"
                                     assert pycarl.variable_with_name(p_a_name).is_no_variable, (p_a_name, action_function_params)
                                     act_param = pycarl.Variable(p_a_name)
-                                    if self.use_softmax: parameter_resolution[act_param] = random.normalvariate()
+                                    if self.use_softmax: parameter_resolution[act_param] = random.normalvariate(mu=0, sigma=1)
                                     resolution[act_param] = pc.Rational(1 / len(pomdp_sketch.observation_to_actions[o]) + 1e-6)
                                     counter += 1
                                     
@@ -549,11 +549,13 @@ class POMDPFamiliesSynthesis:
         else:
             return x
 
-    # @profile
-    def gradient_descent_on_single_pomdp(self, hole_assignment, num_iters : int, num_nodes : int, action_function_params = {}, memory_function_params = {}, resolution = {}, parameter_resolution = None, timeout = None):
+    def gradient_descent_on_single_pomdp_from_hole_assignment(self, hole_assignment, num_iters : int, num_nodes : int, **kwargs):
         print("Building pDTMC for POMDP:", str(hole_assignment))
         pomdp_class = self.pomdp_sketch.build_pomdp(hole_assignment)
         pomdp = pomdp_class.model
+        return self.gradient_descent_on_single_pomdp(pomdp, num_iters, num_nodes, **kwargs)
+
+    def gradient_descent_on_single_pomdp(self, pomdp, num_iters : int, num_nodes : int, action_function_params = {}, memory_function_params = {}, resolution = {}, parameter_resolution = None, timeout = None):
         pmc, action_function_params, memory_function_params, resolution, parameter_resolution = self.construct_pmc(pomdp, self.pomdp_sketch, self.reward_model_name, num_nodes, distinct_parameters_for_final_probability=self.use_softmax, parameter_resolution=parameter_resolution, resolution=resolution, action_function_params=action_function_params, memory_function_params=memory_function_params)
         
         if self.use_softmax:
@@ -670,7 +672,7 @@ class POMDPFamiliesSynthesis:
             else:
                 hole_assignment = self.pomdp_sketch.family.pick_any()
             
-            current_value, new_resolution, action_function_params, memory_function_params, parameter_resolution = self.gradient_descent_on_single_pomdp(hole_assignment, 10 // self.gd_steps, num_nodes, action_function_params, memory_function_params, resolution, parameter_resolution)
+            current_value, new_resolution, action_function_params, memory_function_params, parameter_resolution = self.gradient_descent_on_single_pomdp_from_hole_assignment(hole_assignment, 10 // self.gd_steps, num_nodes, action_function_params=action_function_params, memory_function_params=memory_function_params, resolution=resolution, parameter_resolution=parameter_resolution)
             
             self.current_values.append(current_value)
             
