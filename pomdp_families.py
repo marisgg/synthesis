@@ -374,7 +374,7 @@ class POMDPFamiliesSynthesis:
                                     p_a_name = f"p{counter}_n{n}_o{o}_a{quotient_action}"
                                     assert pycarl.variable_with_name(p_a_name).is_no_variable, (p_a_name, action_function_params)
                                     act_param = pycarl.Variable(p_a_name)
-                                    if self.use_softmax: parameter_resolution[act_param] = random.normalvariate(mu=0, sigma=1)
+                                    if self.use_softmax: parameter_resolution[act_param] = random.gauss(mu=0, sigma=1)
                                     resolution[act_param] = pc.Rational(1 / len(pomdp_sketch.observation_to_actions[o]) + 1e-6)
                                     counter += 1
                                     
@@ -396,7 +396,7 @@ class POMDPFamiliesSynthesis:
                                     assert pycarl.variable_with_name(p_o_name).is_no_variable, (p_o_name, action_function_params)
                                     mem_param = pycarl.Variable(p_o_name)
                                     resolution[mem_param] = pc.Rational(1 / num_nodes + 1e-6)
-                                    if self.use_softmax: parameter_resolution[mem_param] = random.normalvariate()
+                                    if self.use_softmax: parameter_resolution[mem_param] = random.gauss(mu=0, sigma=1)
                                     memory_function_params[mem_tup] = mem_param
                                     counter += 1
 
