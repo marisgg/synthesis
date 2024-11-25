@@ -6,19 +6,24 @@ from pomdp_families import Method
 
 import pickle
 
-# Can try various models.
-OBSTACLES_EIGHTH_THREE = "models/pomdp/sketches/obstacles-8-3"
-OBSTACLES_TEN_TWO = "models/pomdp/sketches/obstacles-10-2"
-AVOID = "models/pomdp/sketches/avoid"
-DPM = "models/pomdp/sketches/dpm"
-ROVER = "models/pomdp/sketches/rover"
+BASE_OUTPUT_DIR = "./outputs/second"
 
-ENVS = [OBSTACLES_TEN_TWO, DPM, AVOID]
+BASE_SKETCH_DIR = 'models/pomdp/sketches'
+
+# Can try various models.
+OBSTACLES_EIGHTH_THREE = f"{BASE_SKETCH_DIR}/obstacles-8-3"
+OBSTACLES_TEN_TWO = f"{BASE_SKETCH_DIR}/obstacles-10-2"
+AVOID = f"{BASE_SKETCH_DIR}/avoid"
+DPM = f"{BASE_SKETCH_DIR}/dpm"
+ROVER = f"{BASE_SKETCH_DIR}/rover"
+ACO = f"{BASE_SKETCH_DIR}/aco"
+
+ENVS = [OBSTACLES_TEN_TWO, OBSTACLES_EIGHTH_THREE, DPM, AVOID]
 
 def run_family_experiment(num_nodes = 2):
     for project_path in ENVS:
 
-        dr = f"./outputs/{project_path.split('/')[-1]}/"
+        dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/"
         os.makedirs(dr, exist_ok=True)
 
         gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=False)
@@ -56,9 +61,9 @@ def run_family(project_path):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=False, steps=10)
     gd.run_gradient_descent_on_family(1000, 2)
 
-def run_family_softmax(project_path):
+def run_family_softmax(project_path, num_nodes = 2):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01)
-    gd.run_gradient_descent_on_family(1000, 2)
+    gd.run_gradient_descent_on_family(1000, num_nodes)
 
 def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01)
@@ -66,9 +71,9 @@ def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2
 
     for method in [Method.SAYNT, Method.GRADIENT]:
 
-        subfamily_other_results = gd.experiment_on_subfamily(subfamily_assigments, num_nodes, method, num_gd_iterations=250, timeout=timeout, evaluate_on_whole_family=True)
+        subfamily_other_results = gd.experiment_on_subfamily(subfamily_assigments, num_nodes, method, num_gd_iterations=1000, timeout=timeout, evaluate_on_whole_family=True)
 
-        dr = f"./outputs/{project_path.split('/')[-1]}/{subfamily_size}/"
+        dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/{subfamily_size}/"
         os.makedirs(dr, exist_ok=True)
         with open(f"{dr}/{method.name.lower()}.pickle", 'wb') as handle:
             pickle.dump(subfamily_other_results, handle)
@@ -84,7 +89,8 @@ def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2
 
     our_results = {
         'ours' : our_evaluations,
-        'whole_family' : family_value
+        'whole_family' : family_value,
+        'fsc' : best_gd_fsc
     }
 
     print("OURS:", our_evaluations, 'family value:', family_value)
@@ -112,7 +118,15 @@ def run_union(project_path, method):
     union_pomdp = payntbind.synthesis.createModelUnion(pomdps)
 
     nodes = 2
-    fsc = gd.solve_pomdp_saynt(union_pomdp, gd.pomdp_sketch.specification, nodes, timeout=15)
+    
+    if method == Method.SAYNT:
+        fsc = gd.solve_pomdp_saynt(union_pomdp, gd.pomdp_sketch.specification, nodes, timeout=15)
+        print(fsc.memory_model)
+        exit()
+    
+    elif method == Method.GRADIENT:
+        value, resolution, action_function_params, memory_function_params, *_ = gd.gradient_descent_on_single_pomdp(union_pomdp, 150, 2, timeout=10, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={})
+        fsc = gd.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, 2, gd.nO, gd.pomdp_sketch.observation_to_actions)
 
     # get rid of the fresh observation
     initial_node = fsc.update_function[0][-1]
@@ -164,12 +178,12 @@ def run_union(project_path, method):
     print(gd.get_values_on_subfamily(gd.get_dtmc_sketch(fsc), assignments))
 
 # run_family()
-# run_family_softmax(AVOID)
-# run_family_softmax(OBSTACLES_TEN_TWO)
+# run_family_softmax(ACO)
+run_family_softmax(AVOID, 1)
 # run_family_experiment()
 # run_subfamily(ROVER, timeout=30)
-# for env, timeout in zip(ENVS, [10, 10, 60]):
+# for env, timeout in zip([DPM, AVOID], [10, 60]):
     # run_subfamily(env, timeout=timeout, subfamily_size=5)
 # run_subfamily(num_nodes=3, timeout=60)
 
-run_union(OBSTACLES_TEN_TWO)
+# run_union(OBSTACLES_TEN_TWO, Method.SAYNT)
