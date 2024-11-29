@@ -408,8 +408,8 @@ class POMDPFamiliesSynthesis:
                 N = num_nodes
                 # Nseen += N
                 for n in range(N):
-                    # sMC = s * N + n
-                    sMC = state_map[(s,n)]
+                    sMC = s * N + n
+                    # sMC = state_map[(s,n)]
                     # print("STATEMAP:", sMC)
                     states.add(sMC)
                     # print(s, "*", N, "+", n, "=", sMC)
@@ -427,10 +427,10 @@ class POMDPFamiliesSynthesis:
                         # else:
                             # M = num_nodes
                         for m in range(M):
-                            # tMC = t * M + m
-                            if (t,m) not in state_map:
-                                continue
-                            tMC = state_map[(t,m)]
+                            tMC = t * M + m
+                            # if (t,m) not in state_map:
+                                # continue
+                            # tMC = state_map[(t,m)]
                             states.add(tMC)
                             act_tup = (n, o, quotient_action)
                             mem_tup = (n, o, m)
@@ -441,7 +441,13 @@ class POMDPFamiliesSynthesis:
 
                             if act_tup in action_function_params:
                                 act_param = action_function_params[act_tup]
+                                # print("YO!", act_tup)
+                            elif (memory_model[o] < num_nodes and (act_tup[0] % memory_model[o], act_tup[1], act_tup[2]) in action_function_params):
+                                # print("HEY!", act_tup)
+                                act_param = action_function_params[(act_tup[0] % memory_model[o], act_tup[1], act_tup[2])]
+                                action_function_params[act_tup] = act_param
                             else:
+                                # print("OLA!", act_tup)
                                 action_ids = [b.id for b in pomdp.states[s].actions]
                                 quotient_actions = pomdp_sketch.observation_to_actions[o]
                                 if not distinct_parameters_for_final_probability and a == max(action_ids):
@@ -462,7 +468,14 @@ class POMDPFamiliesSynthesis:
 
                             if mem_tup in memory_function_params:
                                 mem_param = memory_function_params[mem_tup]
+                                print("YO!", mem_tup)
+                            elif (memory_model[o] < num_nodes and (mem_tup[0] % memory_model[o], mem_tup[1], mem_tup[2]) in memory_function_params):
+                                print("HEY!", mem_tup)
+                                # exit()
+                                mem_param = memory_function_params[(mem_tup[0] % memory_model[o], mem_tup[1], mem_tup[2])]
+                                memory_function_params[mem_tup] = mem_param
                             else:
+                                print("OLA!", mem_tup)
                                 if not distinct_parameters_for_final_probability and m == M-1:
                                     mem_param = pc.Rational(1)
                                     for m_ in range(M):
