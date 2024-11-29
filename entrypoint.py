@@ -57,13 +57,13 @@ def run_family_experiment(num_nodes = 2):
         with open(f"{dr}/gd-experiment.pickle", 'wb') as handle:
             pickle.dump(results, handle)
 
-def run_family(project_path):
+def run_family(project_path, num_nodes = 2, memory_model = None):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=False, steps=10)
-    gd.run_gradient_descent_on_family(1000, 2)
+    gd.run_gradient_descent_on_family(1000, num_nodes, memory_model=memory_model)
 
-def run_family_softmax(project_path, num_nodes = 2):
+def run_family_softmax(project_path, num_nodes = 2, memory_model = None):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01)
-    gd.run_gradient_descent_on_family(1000, num_nodes)
+    gd.run_gradient_descent_on_family(1000, num_nodes, memory_model=memory_model)
 
 def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01)
@@ -177,9 +177,15 @@ def run_union(project_path, method):
 
     print(gd.get_values_on_subfamily(gd.get_dtmc_sketch(fsc), assignments))
 
-# run_family()
+# run_family(OBSTACLES_TEN_TWO, 4)
 # run_family_softmax(ACO)
-run_family_softmax(AVOID, 1)
+# run_family_softmax(OBSTACLES_TEN_TWO, 4, memory_model=[1, 3, 1, 1, 1, 1, 4, 1, 1, 1, 1, 4, 4, 4])
+# run_family_softmax(OBSTACLES_TEN_TWO, 4, memory_model=[2, 3, 2, 2, 2, 2, 4, 2, 2, 2, 2, 4, 4, 4])
+# run_family_softmax(OBSTACLES_TEN_TWO, 2, memory_model=[1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2])
+run_family_softmax(OBSTACLES_TEN_TWO, 2, memory_model=[1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
+# run_family_softmax(OBSTACLES_TEN_TWO, 2)
+# run_family(OBSTACLES_TEN_TWO, 2)
+# run_family_softmax(OBSTACLES_TEN_TWO, 4)
 # run_family_experiment()
 # run_subfamily(ROVER, timeout=30)
 # for env, timeout in zip([DPM, AVOID], [10, 60]):
