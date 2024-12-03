@@ -70,7 +70,7 @@ def run_family_softmax(project_path, num_nodes = 2, memory_model = None):
 def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2, memory_model = None, baselines = [Method.SAYNT, Method.GRADIENT]):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01)
     subfamily_assigments = gd.create_random_subfamily(subfamily_size)
-    
+
     dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/{subfamily_size}/"
     os.makedirs(dr, exist_ok=True)
 
@@ -115,8 +115,7 @@ def run_union(project_path, method):
         if observation_action_to_true_action is None:
             observation_action_to_true_action = obs_action_to_true_action
         else:
-            assert observation_action_to_true_action == obs_action_to_true_action
-    # [print(pomdp) for pomdp in pomdps]
+            assert observation_action_to_true_action == obs_action_to_true_action, "\n".join(['', str(observation_action_to_true_action), "=/=", str(obs_action_to_true_action)])
 
     union_pomdp = payntbind.synthesis.createModelUnion(pomdps)
 
@@ -176,12 +175,12 @@ def run_union(project_path, method):
 
     print(gd.pomdp_sketch.observation_to_actions)
 
-    print(gd.get_values_on_subfamily(gd.get_dtmc_sketch(fsc), assignments))
+    print(gd.get_values_on_subfamily(gd.get_dtmc_sketch(fsc), assignments)) # TODO, returns unexpected values. FSC might be incorrectly morphed back to family?
 
 # run_family(OBSTACLES_TEN_TWO, 4)
 # run_family_softmax(ACO)
 # run_family_softmax(OBSTACLES_TEN_TWO, 2)
-run_family_softmax(ROVER, num_nodes=3, memory_model=[random.randint(1,3) for _ in range(20)])
+# run_family_softmax(ROVER, num_nodes=3, memory_model=[random.randint(1,3) for _ in range(20)])
 # run_subfamily(ROVER, 5, 60, )
 # run_subfamily(OBSTACLES_TEN_TWO, num_nodes=4, memory_model=[1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4], baselines=[], timeout=20)
 # run_subfamily(OBSTACLES_TEN_TWO, num_nodes=2, memory_model=None, baselines=[], timeout=20)
@@ -199,4 +198,4 @@ run_family_softmax(ROVER, num_nodes=3, memory_model=[random.randint(1,3) for _ i
     # run_subfamily(env, timeout=timeout, subfamily_size=5)
 # run_subfamily(num_nodes=3, timeout=60)
 
-# run_union(NETWORK, Method.SAYNT)
+run_union(ROVER, Method.SAYNT)
