@@ -98,7 +98,6 @@ void bindings_pomdp_family(py::module& m) {
                 double grad = (*der.check(env, valuation, p, valueVector)).getValueVector().at(0);
                 gradients[p] = grad;
             }
-
             return gradients;
             })
         .def("checkMultipleParametersMT", [](

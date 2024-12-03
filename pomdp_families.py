@@ -157,12 +157,11 @@ class POMDPFamiliesSynthesis:
                 if isinstance(var, pycarl.cln.cln.Rational):
                     prob = float(var)
                 else:
+                    print("Should this occur?")
                     prob = float(var.evaluate(resolution))
 
             if prob == 0:
                 continue
-
-            # print(n,o,a,prob)
 
             if fsc.action_function[n][o] is None:
                 fsc.action_function[n][o] = {a : prob}
@@ -176,6 +175,7 @@ class POMDPFamiliesSynthesis:
                 if isinstance(var, pycarl.cln.cln.Rational):
                     prob = float(var)
                 else:
+                    print("Should this occur?")
                     prob = float(var.evaluate(resolution))
 
             if prob == 0:
@@ -187,27 +187,13 @@ class POMDPFamiliesSynthesis:
                 fsc.update_function[n][o].update({m : prob})
         
         new_fsc = paynt.quotient.fsc.FSC(num_nodes, num_obs)
-        
-        # print(fsc.action_function)
+
         for o in range(self.nO):
             for n in range(num_nodes):
-                # print(n, o, memory_model[o], n % memory_model[o])
-                # print(fsc.update_function[n][o])
                 new_fsc.action_function[n][o] = fsc.action_function[n % memory_model[o]][o]
-
                 new_fsc.update_function[n][o] = fsc.update_function[n % memory_model[o]][o]
-                # print(new_fsc.update_function[n][o])
-                # exit()
                 
         fsc = new_fsc
-        
-        # exit()
-        
-        # print(fsc)
-        
-        # print(new_fsc.update_function)
-        
-        # exit()
 
         fsc.action_function = [[d if d is not None else {a : 1/len(observation_to_actions[o]) for a in observation_to_actions[o]} for o, d in enumerate(o_to_act)] for o_to_act in fsc.action_function]
         fsc.update_function = [[d if d is not None else {m : 1/num_nodes for m in range(num_nodes)} for d in o_to_mem ] for o_to_mem in fsc.update_function]
@@ -327,30 +313,10 @@ class POMDPFamiliesSynthesis:
         return results
 
     # @profile
-    def construct_pmc(self, pomdp, pomdp_sketch, reward_model_name, num_nodes, action_function_params = {}, memory_function_params = {}, resolution = {}, parameter_resolution = None, distinct_parameters_for_final_probability = False, sanity_checks = True, memory_model = None):
+    def construct_pmc(self, pomdp, pomdp_sketch, reward_model_name, num_nodes, action_function_params = {}, memory_function_params = {}, resolution = {}, parameter_resolution = None, distinct_parameters_for_final_probability = False, sanity_checks = False, memory_model = None):
         # pycarl.clear_pools()
         
         builder : stormpy.storage.storage.ParametricSparseMatrixBuilder = stormpy.storage.ParametricSparseMatrixBuilder()
-        
-        # sparse_memory = memory_model is not None
-        
-        # if sparse_memory:
-            
-        #     try:
-        #         num_nodes = np.array(num_nodes).item()
-        #         num_nodes = [num_nodes] * self.nO
-        #     except ValueError as ve:
-        #         assert "scalar" in ve.__str__().lower() # Very erroneous sanity check ;)
-            
-        #     # num_nodes = [1, 3, 1, 1, 1, 1, 4, 1, 1, 1, 1, 4, 4, 4]
-            
-        #     # num_nodes = [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
-            
-        #     num_nodes = ([1] * 13) + [2]
-            
-        #     # print(num_nodes)
-            
-        #     assert np.size(num_nodes) == self.nO, (np.size(num_nodes), self.nO)
         
         print(memory_model)
         
@@ -361,8 +327,7 @@ class POMDPFamiliesSynthesis:
         pmc_transitions = {}
         
         rewards = {}
-        
-        # print(pomdp.reward_models)
+
         reward_model = pomdp.reward_models[reward_model_name]
         assert not reward_model.has_state_rewards
         assert reward_model.has_state_action_rewards
@@ -380,19 +345,6 @@ class POMDPFamiliesSynthesis:
         labeling = {l : [] for l in labels.get_labels()}
 
         target_label = pomdp_sketch.get_property().get_target_label()
-        
-        counter = 0        
-        state_map = {}        
-        for state in pomdp.states:
-            s = state.id
-            o = pomdp.observations[s]
-            for n in range(memory_model[o]):
-                state_map[(s,n)] = counter
-                counter += 1
-        
-        # print(state_map)
-        
-        # counter = 0
 
         for state in pomdp.states:
             s = state.id
@@ -402,17 +354,10 @@ class POMDPFamiliesSynthesis:
                 quotient_action = pomdp_sketch.observation_to_actions[o][a]
                 choice = ndi[s]+a
                 reward = state_action_rewards[choice]
-                # if sparse_memory:
-                # N = memory_model[o]
-                # else:
                 N = num_nodes
-                # Nseen += N
                 for n in range(N):
                     sMC = s * N + n
-                    # sMC = state_map[(s,n)]
-                    # print("STATEMAP:", sMC)
                     states.add(sMC)
-                    # print(s, "*", N, "+", n, "=", sMC)
                     if sMC not in pmc_transitions:
                         pmc_transitions[sMC] = {}
                     for label in state.labels:
@@ -421,16 +366,9 @@ class POMDPFamiliesSynthesis:
                     for transition in action.transitions:
                         t = transition.column
                         t_prob = transition.value()
-                        # if sparse_memory:
-                        # M = memory_model[pomdp.observations[t]]
                         M = N
-                        # else:
-                            # M = num_nodes
                         for m in range(M):
                             tMC = t * M + m
-                            # if (t,m) not in state_map:
-                                # continue
-                            # tMC = state_map[(t,m)]
                             states.add(tMC)
                             act_tup = (n, o, quotient_action)
                             mem_tup = (n, o, m)
@@ -441,13 +379,11 @@ class POMDPFamiliesSynthesis:
 
                             if act_tup in action_function_params:
                                 act_param = action_function_params[act_tup]
-                                # print("YO!", act_tup)
                             elif (memory_model[o] < num_nodes and (act_tup[0] % memory_model[o], act_tup[1], act_tup[2]) in action_function_params):
-                                # print("HEY!", act_tup)
+                                # Here, we duplicate existing parameters in case of a non-flat memory model.
                                 act_param = action_function_params[(act_tup[0] % memory_model[o], act_tup[1], act_tup[2])]
                                 action_function_params[act_tup] = act_param
                             else:
-                                # print("OLA!", act_tup)
                                 action_ids = [b.id for b in pomdp.states[s].actions]
                                 quotient_actions = pomdp_sketch.observation_to_actions[o]
                                 if not distinct_parameters_for_final_probability and a == max(action_ids):
@@ -468,14 +404,11 @@ class POMDPFamiliesSynthesis:
 
                             if mem_tup in memory_function_params:
                                 mem_param = memory_function_params[mem_tup]
-                                print("YO!", mem_tup)
                             elif (memory_model[o] < num_nodes and (mem_tup[0] % memory_model[o], mem_tup[1], mem_tup[2]) in memory_function_params):
-                                print("HEY!", mem_tup)
-                                # exit()
+                                # Here, we duplicate existing parameters in case of a non-flat memory model.
                                 mem_param = memory_function_params[(mem_tup[0] % memory_model[o], mem_tup[1], mem_tup[2])]
                                 memory_function_params[mem_tup] = mem_param
                             else:
-                                print("OLA!", mem_tup)
                                 if not distinct_parameters_for_final_probability and m == M-1:
                                     mem_param = pc.Rational(1)
                                     for m_ in range(M):
@@ -487,7 +420,6 @@ class POMDPFamiliesSynthesis:
                                     p_o_name = f"p{counter}_n{n}_o{o}_m{m}"
                                     assert pycarl.variable_with_name(p_o_name).is_no_variable, (p_o_name, action_function_params)
                                     mem_param = pycarl.Variable(p_o_name)
-                                    # print(p_o_name, 1 / M)
                                     resolution[mem_param] = pc.Rational(1 / M)
                                     if self.use_softmax: parameter_resolution[mem_param] = random.gauss(mu=0, sigma=1)
                                     memory_function_params[mem_tup] = mem_param
@@ -501,47 +433,17 @@ class POMDPFamiliesSynthesis:
                                 pmc_transitions[sMC][tMC] += action_mem_poly
                             else:
                                 pmc_transitions[sMC][tMC] = action_mem_poly
-                                
-                            # print(sMC, tMC, pmc_transitions[sMC][tMC])
 
                     if sMC in rewards:
                         rewards[sMC] += pc.Polynomial(action_function_params[(n, o, quotient_action)]) * pc.Rational(float(reward))
                     else:
                         rewards[sMC] = pc.Polynomial(action_function_params[(n, o, quotient_action)]) * pc.Rational(float(reward))
         
-        # resolution = {expr : pc.Rational(initial_probability) for key, expr in action_function_params.items() if isinstance(expr, pycarl.Variable)}
-        # resolution.update({
-            # expr : pc.Rational(initial_probability) for key, expr in memory_function_params.items() if isinstance(expr, pycarl.Variable)
-        # })
-        # print(seen)
-        # print(len(seen))
-        # exit()
-        # for param in memory_function_params.items():
-            # print(param)
-        
-        # for (s, t, a) in seen:
-            # print(s, t, a)
-        # exit()
-        
         if self.use_softmax:
             probabilistic_resolution = self.resolution_to_softmax(action_function_params, memory_function_params, parameter_resolution, num_nodes)
             resolve = probabilistic_resolution
         else:
             resolve = resolution
-        
-        # print(probabilistic_resolution)
-        
-        # resolve = probabilistic_resolution if self.use_softmax else resolution
-        
-        # print(state_map)
-        
-        # print(action_function_params)
-        
-        # print(memory_function_params)
-        print("RESOLVE!!!")
-        print(resolve)
-        print([float(pam) for pam in resolve.values()])
-        print([float(pam) for pam in resolve.values() if float(pam) >= 1])
         
         cache = pycarl.cln.cln._FactorizationCache()
         for s, next_states in sorted(pmc_transitions.items(), key = lambda x : x[0]):
@@ -564,10 +466,6 @@ class POMDPFamiliesSynthesis:
                     assert parametric_transition.evaluate(resolve) > 0 and parametric_transition.evaluate(resolve) <= 1
                     assert probability_function.evaluate(resolve) > 0 and probability_function.evaluate(resolve) <= 1
 
-        # print(pmc_transitions)
-        
-        # print(memory_function_params)
-
         del pmc_transitions
         
         gc.collect()
@@ -588,11 +486,8 @@ class POMDPFamiliesSynthesis:
         
         labelling = stormpy.storage.StateLabeling(len(states))
         
-        # print(len(states), len(rewards), )
-        
         for label, states in labeling.items():
             labelling.add_label(label)
-            # print(label, states)
             for s in states:
                 labelling.add_label_to_state(label, s)
 
@@ -618,9 +513,10 @@ class POMDPFamiliesSynthesis:
                     continue
                 assert len(action_params) > 0, action_function_params
                 action_parameter_values = np.array([float(parameter_resolution[var]) for var in action_params if var in parameter_resolution])
+                if action_parameter_values.size == 0:
+                    continue
                 assert action_parameter_values.size > 0, (n, o, action_params, action_parameter_values)
                 softmax_action_probs = stablesoftmax(action_parameter_values)
-                # softmax_action_jacobian = np.diag(softmax_action_probs) - np.inner(softmax_action_probs, softmax_action_probs)
                 assert math.isclose(sum(softmax_action_probs), 1)
                 for var, softmax_prob in zip(action_params, softmax_action_probs):
                     assert softmax_prob > 0 and softmax_prob <= 1, (softmax_action_probs, action_parameter_values)
@@ -631,7 +527,6 @@ class POMDPFamiliesSynthesis:
                     continue
                 memory_parameter_values = np.array([float(parameter_resolution[var]) for var in node_params if var in parameter_resolution])
                 softmax_memory_probs = stablesoftmax(np.array([float(parameter_resolution[var]) for var in node_params]))
-                # softmax_memory_jacobian = np.diag(softmax_memory_probs) - np.inner(softmax_memory_probs, softmax_memory_probs)
                 assert math.isclose(sum(softmax_memory_probs), 1)
                 for var, softmax_prob in zip(node_params, softmax_memory_probs):
                     assert softmax_prob > 0 and softmax_prob <= 1, (softmax_memory_probs, memory_parameter_values)
@@ -646,38 +541,23 @@ class POMDPFamiliesSynthesis:
                 action_params = [action_function_params[n,o,a] for a in range(self.nA) if (n,o,a) in action_function_params]
                 if action_params == []:
                     continue
+                
                 action_parameter_values = np.array([float(parameter_resolution[var]) for var in action_params if var in parameter_resolution])
-                action_gradients = np.array([float(gradients[var]) for var in action_params if var in parameter_resolution])
+                if action_parameter_values.size == 0:
+                    continue
                 softmax_action_probs = stablesoftmax(action_parameter_values)
                 
-                # softmax_action_jacobian = np.diag(softmax_action_probs) - np.inner(softmax_action_probs, softmax_action_probs)
-                
                 for var, softmax_prob in zip(action_params, softmax_action_probs):
-                    softmax_grad[var] = sum([gradients[var_j] * ((softmax_prob * (1 - softmax_prob_j)) if var == var_j else (-softmax_prob * softmax_prob_j)) for var_j, softmax_prob_j in zip(action_params, softmax_action_probs)])
-
-                # summation_term = np.inner(softmax_action_probs, action_gradients).sum()
-                # assert math.isclose(softmax_action_probs.sum(), 1)
-                # for var, softmax_prob in zip(action_params, softmax_action_probs):
-                #     assert softmax_prob > 0 and softmax_prob <= 1, (softmax_action_probs, action_parameter_values)
-                #     softmax_grad[var] = softmax_prob * (gradients[var] - summation_term)
+                    softmax_grad[var] = sum([gradients[var_j] * ((softmax_prob * (1 - softmax_prob_j)) if var == var_j else (-softmax_prob * softmax_prob_j)) for var_j, softmax_prob_j in zip(action_params, softmax_action_probs) if var_j in gradients])
                 
                 node_params = [memory_function_params[n,o,m] for m in range(num_nodes) if (n,o,m) in memory_function_params]
                 if node_params == []:
                     continue
-                memory_parameter_values = np.array([float(parameter_resolution[var]) for var in node_params if var in parameter_resolution])
-                memory_gradients = np.array([float(gradients[var]) for var in node_params if var in parameter_resolution])
+
                 softmax_memory_probs = stablesoftmax(np.array([float(parameter_resolution[var]) for var in node_params]))
-                
-                # softmax_memory_jacobian = np.diag(softmax_memory_probs) - np.inner(softmax_memory_probs, softmax_memory_probs)
 
                 for var, softmax_prob in zip(node_params, softmax_memory_probs):
-                    softmax_grad[var] = sum([gradients[var_j] * ((softmax_prob * (1 - softmax_prob_j)) if var == var_j else (-softmax_prob * softmax_prob_j)) for var_j, softmax_prob_j in zip(node_params, softmax_memory_probs)])
-
-                # summation_term = np.inner(softmax_memory_probs, memory_gradients).sum()
-                # assert math.isclose(sum(softmax_memory_probs), 1)
-                # for var, softmax_prob in zip(node_params, softmax_memory_probs):
-                #     assert softmax_prob > 0 and softmax_prob <= 1, (softmax_memory_probs, memory_parameter_values)
-                #     softmax_grad[var] = softmax_prob * (gradients[var] - summation_term)
+                    softmax_grad[var] = sum([gradients[var_j] * ((softmax_prob * (1 - softmax_prob_j)) if var == var_j else (-softmax_prob * softmax_prob_j)) for var_j, softmax_prob_j in zip(node_params, softmax_memory_probs) if var_j in gradients])
 
         return softmax_grad
     
@@ -694,9 +574,8 @@ class POMDPFamiliesSynthesis:
         return self.gradient_descent_on_single_pomdp(pomdp, num_iters, num_nodes, **kwargs)
 
     def gradient_descent_on_single_pomdp(self, pomdp, num_iters : int, num_nodes : int, action_function_params = {}, memory_function_params = {}, resolution = {}, parameter_resolution = None, timeout = None, memory_model = None):
-        # assert action_function_params is not {} and not action_function_params == {}
-        # print("BEFORE CALL:", action_function_params)
         pmc, action_function_params, memory_function_params, resolution, parameter_resolution = self.construct_pmc(pomdp, self.pomdp_sketch, self.reward_model_name, num_nodes, distinct_parameters_for_final_probability=self.use_softmax, parameter_resolution=parameter_resolution, resolution=resolution, action_function_params=action_function_params, memory_function_params=memory_function_params, memory_model=memory_model)
+        current_parameters = list(pmc.collect_all_parameters())
         
         if self.use_softmax:
             resolution = self.resolution_to_softmax(action_function_params, memory_function_params, parameter_resolution, num_nodes)
@@ -709,10 +588,12 @@ class POMDPFamiliesSynthesis:
             wrapper.setup(self.env, self.synth_task)
             wrapper.resetDynamicValues()
 
-        # action_function_params_no_const = {index : var for index, var in action_function_params.items() if isinstance(var, pycarl.Variable)}
-        # memory_function_params_no_const = {index : var for index, var in memory_function_params.items() if isinstance(var, pycarl.Variable)}
-        # for p in pmc.collect_all_parameters():
-        #     assert p in action_function_params_no_const.values() or p in memory_function_params_no_const.values()
+        action_function_params_no_const = {index : var for index, var in action_function_params.items() if isinstance(var, pycarl.Variable)}
+        memory_function_params_no_const = {index : var for index, var in memory_function_params.items() if isinstance(var, pycarl.Variable)}
+        for p in pmc.collect_all_parameters():
+            assert p in action_function_params_no_const.values() or p in memory_function_params_no_const.values()
+        
+        assert set(pmc.collect_all_parameters()) <= set(list(resolution.keys())), ("The parameters of the pDTMC:", pmc.collect_all_parameters(), "should be a subset of the probabilistic resolution mapping of the parameters:", list(resolution.keys()))
         
         if timeout:
             tik = time.time()
@@ -721,14 +602,12 @@ class POMDPFamiliesSynthesis:
         instantiated_model = instantiator.instantiate(resolution)
         result = stormpy.model_checking(instantiated_model, self.pomdp_sketch.get_property().property.raw_formula)
         
-        assert set(pmc.collect_all_parameters()) == set(list(resolution.keys()))
+        all_seen_parameters = list(resolution.keys())
         
-        parameters = list(resolution.keys())
-        
-        print("Before GD value:", result.at(0))
+        print("Before GD value:", result.at(0), 'Number of parameters:', len(current_parameters))
         
         if self.use_momentum and (self.reset_momentum or self.momentum is None):
-            self.momentum = dict(zip(parameters, [0] * len(parameters)))
+            self.momentum = dict(zip(all_seen_parameters, [0] * len(all_seen_parameters)))
 
         direction_operator = operator.sub if self.minimizing else operator.add
         
@@ -737,9 +616,9 @@ class POMDPFamiliesSynthesis:
                 new_resolution = {}
                 new_parameter_resolution = {}
                 grads = {}
-                grads = checker.checkMultipleParameters(self.env, resolution, parameters, result.get_values())
+                grads = checker.checkMultipleParameters(self.env, resolution, current_parameters, result.get_values())
                 softmax_grads = self.softmax_gradients(action_function_params, memory_function_params, parameter_resolution, num_nodes, grads)
-                for p in parameters:
+                for p in current_parameters:
                     # TODO: implement momentum of gradients (for each parameter independently) or other optimizer tricks.
                     if self.use_momentum:
                         self.momentum[p] = self.beta * self.momentum[p] + (1 - self.beta) * self.clip_gradient(softmax_grads[p], doclip=True)
@@ -749,7 +628,7 @@ class POMDPFamiliesSynthesis:
 
                 new_resolution = self.resolution_to_softmax(action_function_params, memory_function_params, new_parameter_resolution, num_nodes)
                 instantiator = stormpy.pars.PDtmcInstantiator(pmc)
-                self.sanity_check_pmc_at_instantiation(pmc, new_resolution)
+                # self.sanity_check_pmc_at_instantiation(pmc, new_resolution)
                 instantiated_model = instantiator.instantiate(new_resolution)
                 result = stormpy.model_checking(instantiated_model, self.pomdp_sketch.get_property().property.raw_formula)
                 current_value = result.at(0)
@@ -816,13 +695,15 @@ class POMDPFamiliesSynthesis:
             else:
                 hole_assignment = self.pomdp_sketch.family.pick_any()
             
-            current_value, new_resolution, action_function_params, memory_function_params, parameter_resolution = self.gradient_descent_on_single_pomdp_from_hole_assignment(hole_assignment, 10 // self.gd_steps, num_nodes, action_function_params=action_function_params, memory_function_params=memory_function_params, resolution=resolution, parameter_resolution=parameter_resolution, memory_model=memory_model)
+            current_value, new_resolution, action_function_params, memory_function_params, new_parameter_resolution = self.gradient_descent_on_single_pomdp_from_hole_assignment(hole_assignment, 10 // self.gd_steps, num_nodes, action_function_params=action_function_params, memory_function_params=memory_function_params, resolution=resolution, parameter_resolution=parameter_resolution, memory_model=memory_model)
             
             self.current_values.append(current_value)
             
             print(f"{i} | Latest GD value: {current_value}")
-            
-            resolution = new_resolution
+
+            resolution.update(new_resolution)
+            if self.use_softmax:
+                parameter_resolution.update(new_parameter_resolution)
         
         return best_fsc, best_family_value
     
@@ -870,8 +751,8 @@ class POMDPFamiliesSynthesis:
                         summation += valuation
                     assert np.isclose(summation, 1), (summation)
                     
-            instantiator = stormpy.pars.PDtmcInstantiator(pmc)            
+            instantiator = stormpy.pars.PDtmcInstantiator(pmc)
             instantiated_model = instantiator.instantiate(resolution)
-            # print(instantiated_model)
+            print(instantiated_model)
                     
             print("pMC shoud be ok.")

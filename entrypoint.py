@@ -1,4 +1,5 @@
 import os
+import random
 import stormpy
 import payntbind
 from pomdp_families import POMDPFamiliesSynthesis
@@ -17,6 +18,7 @@ AVOID = f"{BASE_SKETCH_DIR}/avoid"
 DPM = f"{BASE_SKETCH_DIR}/dpm"
 ROVER = f"{BASE_SKETCH_DIR}/rover"
 ACO = f"{BASE_SKETCH_DIR}/aco"
+NETWORK = f"{BASE_SKETCH_DIR}/network"
 
 ENVS = [OBSTACLES_TEN_TWO, OBSTACLES_EIGHTH_THREE, DPM, AVOID]
 
@@ -65,20 +67,21 @@ def run_family_softmax(project_path, num_nodes = 2, memory_model = None):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01)
     gd.run_gradient_descent_on_family(1000, num_nodes, memory_model=memory_model)
 
-def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2):
+def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2, memory_model = None, baselines = [Method.SAYNT, Method.GRADIENT]):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01)
     subfamily_assigments = gd.create_random_subfamily(subfamily_size)
+    
+    dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/{subfamily_size}/"
+    os.makedirs(dr, exist_ok=True)
 
-    for method in [Method.SAYNT, Method.GRADIENT]:
+    for method in baselines:
 
         subfamily_other_results = gd.experiment_on_subfamily(subfamily_assigments, num_nodes, method, num_gd_iterations=1000, timeout=timeout, evaluate_on_whole_family=True)
 
-        dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/{subfamily_size}/"
-        os.makedirs(dr, exist_ok=True)
         with open(f"{dr}/{method.name.lower()}.pickle", 'wb') as handle:
             pickle.dump(subfamily_other_results, handle)
 
-    best_gd_fsc, subfamily_gd_best_value = gd.run_gradient_descent_on_family(1000, num_nodes, subfamily_assigments, timeout=subfamily_size*timeout)
+    best_gd_fsc, subfamily_gd_best_value = gd.run_gradient_descent_on_family(1000, num_nodes, subfamily_assigments, timeout=subfamily_size*timeout, memory_model=memory_model)
     print(subfamily_gd_best_value)
 
     dtmc_sketch = gd.get_dtmc_sketch(best_gd_fsc)
@@ -94,7 +97,7 @@ def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2
     }
 
     print("OURS:", our_evaluations, 'family value:', family_value)
-    with open(f"{dr}/ours.pickle", 'wb') as handle:
+    with open(f"{dr}/ours-sparse.pickle", 'wb') as handle:
         pickle.dump(our_results, handle)
 
 def run_union(project_path, method):
@@ -121,8 +124,6 @@ def run_union(project_path, method):
     
     if method == Method.SAYNT:
         fsc = gd.solve_pomdp_saynt(union_pomdp, gd.pomdp_sketch.specification, nodes, timeout=15)
-        print(fsc.memory_model)
-        exit()
     
     elif method == Method.GRADIENT:
         value, resolution, action_function_params, memory_function_params, *_ = gd.gradient_descent_on_single_pomdp(union_pomdp, 150, 2, timeout=10, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={})
@@ -179,8 +180,12 @@ def run_union(project_path, method):
 
 # run_family(OBSTACLES_TEN_TWO, 4)
 # run_family_softmax(ACO)
-# run_family_softmax(OBSTACLES_TEN_TWO, 4, memory_model=[1, 3, 1, 1, 1, 1, 4, 1, 1, 1, 1, 4, 4, 4])
-run_family_softmax(OBSTACLES_TEN_TWO, 4, memory_model=[1, 1, 1, 1, 1, 1, 4, 1, 1, 1, 1, 1, 1, 4])
+# run_family_softmax(OBSTACLES_TEN_TWO, 2)
+run_family_softmax(ROVER, num_nodes=3, memory_model=[random.randint(1,3) for _ in range(20)])
+# run_subfamily(ROVER, 5, 60, )
+# run_subfamily(OBSTACLES_TEN_TWO, num_nodes=4, memory_model=[1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4], baselines=[], timeout=20)
+# run_subfamily(OBSTACLES_TEN_TWO, num_nodes=2, memory_model=None, baselines=[], timeout=20)
+# run_family_softmax(OBSTACLES_TEN_TWO, 4, memory_model=[1, 1, 1, 1, 1, 1, 4, 1, 1, 1, 1, 1, 1, 4])
 # run_family_softmax(OBSTACLES_TEN_TWO, 4, memory_model=[4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4])
 # run_family_softmax(OBSTACLES_TEN_TWO, 4, memory_model=[2, 3, 2, 2, 2, 2, 4, 2, 2, 2, 2, 4, 4, 4])
 # run_family_softmax(OBSTACLES_TEN_TWO, 2, memory_model=[1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2])
@@ -194,4 +199,4 @@ run_family_softmax(OBSTACLES_TEN_TWO, 4, memory_model=[1, 1, 1, 1, 1, 1, 4, 1, 1
     # run_subfamily(env, timeout=timeout, subfamily_size=5)
 # run_subfamily(num_nodes=3, timeout=60)
 
-# run_union(OBSTACLES_TEN_TWO, Method.SAYNT)
+# run_union(NETWORK, Method.SAYNT)
