@@ -24,6 +24,8 @@ class FSC:
 
         self.observation_labels = None
         self.action_labels = None
+        
+        self.memory_model = None
 
     def __str__(self):
         return json.dumps(self.to_json(), indent=4)

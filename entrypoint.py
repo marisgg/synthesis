@@ -11,13 +11,16 @@ BASE_OUTPUT_DIR = "./outputs/second"
 
 BASE_SKETCH_DIR = 'models/pomdp/sketches'
 
+# WIP models, might get deleted:
+ACO = f"{BASE_SKETCH_DIR}/aco"
+INTERCEPT = f"{BASE_SKETCH_DIR}/intercept"
+
 # Can try various models.
 OBSTACLES_EIGHTH_THREE = f"{BASE_SKETCH_DIR}/obstacles-8-3"
 OBSTACLES_TEN_TWO = f"{BASE_SKETCH_DIR}/obstacles-10-2"
 AVOID = f"{BASE_SKETCH_DIR}/avoid"
 DPM = f"{BASE_SKETCH_DIR}/dpm"
 ROVER = f"{BASE_SKETCH_DIR}/rover"
-ACO = f"{BASE_SKETCH_DIR}/aco"
 NETWORK = f"{BASE_SKETCH_DIR}/network"
 
 ENVS = [OBSTACLES_TEN_TWO, OBSTACLES_EIGHTH_THREE, DPM, AVOID]
@@ -59,12 +62,35 @@ def run_family_experiment(num_nodes = 2):
         with open(f"{dr}/gd-experiment.pickle", 'wb') as handle:
             pickle.dump(results, handle)
 
-def run_family(project_path, num_nodes = 2, memory_model = None):
-    gd = POMDPFamiliesSynthesis(project_path, use_softmax=False, steps=10)
+def determine_memory_model(gd : POMDPFamiliesSynthesis, max_num_nodes = 5, num_samples = 5):
+    import numpy as np
+    assignments = gd.stratified_subfamily_sampling(num_samples)
+    memory_models = []
+    memory_model_matrix = np.zeros((num_samples, gd.nO), dtype=int)
+    for i, assignment in enumerate(assignments):
+        pomdp = gd.pomdp_sketch.build_pomdp(assignment).model
+        fsc = gd.solve_pomdp_saynt(pomdp, gd.pomdp_sketch.specification, max_num_nodes, timeout=10)
+        if fsc is not None and fsc.memory_model is not None:
+            memory_models.append(fsc.memory_model)
+            memory_model_matrix[i, :len(fsc.memory_model)] = fsc.memory_model
+    
+    print(memory_models)
+    print(memory_model_matrix)
+    pointwise_max_memory_model = memory_model_matrix.max(axis=0)
+    print(pointwise_max_memory_model)
+    
+    return pointwise_max_memory_model
+    
+
+def run_family(project_path, num_nodes = 2, memory_model = None, dynamic_memory=True):
+    gd = POMDPFamiliesSynthesis(project_path, use_softmax=False, steps=10, dynamic_memory=dynamic_memory)
     gd.run_gradient_descent_on_family(1000, num_nodes, memory_model=memory_model)
 
-def run_family_softmax(project_path, num_nodes = 2, memory_model = None):
-    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01)
+def run_family_softmax(project_path, num_nodes = 2, memory_model = None, dynamic_memory=False, seed=11):
+    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, dynamic_memory=dynamic_memory, seed=seed)
+    mem = determine_memory_model(gd)
+    print(mem)
+    exit()
     gd.run_gradient_descent_on_family(1000, num_nodes, memory_model=memory_model)
 
 def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2, memory_model = None, baselines = [Method.SAYNT, Method.GRADIENT]):
@@ -177,9 +203,11 @@ def run_union(project_path, method):
 
     print(gd.get_values_on_subfamily(gd.get_dtmc_sketch(fsc), assignments)) # TODO, returns unexpected values. FSC might be incorrectly morphed back to family?
 
-# run_family(OBSTACLES_TEN_TWO, 4)
+run_family_softmax(AVOID, 4)
 # run_family_softmax(ACO)
-# run_family_softmax(OBSTACLES_TEN_TWO, 2)
+# run_family_softmax(AVOID, num_nodes=2, dynamic_memory=False)
+# run_family_softmax(OBSTACLES_TEN_TWO, num_nodes=2, memory_model=[1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1], seed=0)
+# run_subfamily(OBSTACLES_TEN_TWO, subfamily_size=5)
 # run_family_softmax(ROVER, num_nodes=3, memory_model=[random.randint(1,3) for _ in range(20)])
 # run_subfamily(ROVER, 5, 60, )
 # run_subfamily(OBSTACLES_TEN_TWO, num_nodes=4, memory_model=[1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4], baselines=[], timeout=20)
@@ -198,4 +226,4 @@ def run_union(project_path, method):
     # run_subfamily(env, timeout=timeout, subfamily_size=5)
 # run_subfamily(num_nodes=3, timeout=60)
 
-run_union(ROVER, Method.SAYNT)
+# run_union(ROVER, Method.SAYNT)

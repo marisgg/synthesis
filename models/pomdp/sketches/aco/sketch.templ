@@ -31,10 +31,6 @@ const int yinit=MINh+1;
 formula crash = (h<=2 & h>=-2) & (h_y <=2 & h_y>=-2);
 formula hobsval = (h_obs=50 & h_obs_y=50);
 const int obsint=2;
-//const double p1;
-//const double p2;
-//const double p3;
-//global c : [0..3] init 0;
 
 //module to sequence each update
 //module control
@@ -80,28 +76,9 @@ module aircraft
 	// adversary randomly chooses acceleration
 	[h_update]  hobsval & c=1 -> (1-sl):(hdot'=max(MINhdot,min(MAXhdot,hdot+1))) & (c'=4)
 				+sl:(hdot'=max(MINhdot,min(MAXhdot,hdot-1)))& (c'=4);
-	//[h_update]  hobsval  & c=2 -> (1-sl):(hdot'=max(MINhdot,min(MAXhdot,hdot-1))) & (c'=3)
-	//			+sl:(hdot'=max(MINhdot,min(MAXhdot,hdot)))& (c'=3);
-			//	+(1-sl)/2:(hdot'=max(MINhdot,min(MAXhdot,hdot-1)))& (c'=3);
-	//[h_update]  hobsval  &c=3 -> (1-sl):(hdot_y'=max(MINhdot,min(MAXhdot,hdot_y-1)))& (c'=4)
-	//			+sl: (hdot_y'=max(MINhdot,min(MAXhdot,hdot_y)))& (c'=4);
 	[h_update] hobsval  & c=4 -> (1-sl):(hdot_y'=max(MINhdot,min(MAXhdot,hdot_y+1)))& (c'=5)
 				+sl: (hdot_y'=max(MINhdot,min(MAXhdot,hdot_y-1)))& (c'=5);
 	[h_update]  hobsval & c=5   -> 1:(h_obs'=floor(h/obsint))  & (h_obs_y'=floor(h_y/obsint))   &(c'=6);
-	//[h_update]  hobsval & c=5 & h>=0 & h_y <0   -> 1:(h_obs'=floor(h/obsint))  & (h_obs_y'=floor(-h_y/obsint))   &(c'=6)
-        //[h_update]  hobsval & c=5 & h<0 & h_y >=0  -> 1:(h_obs'=floor(-h/obsint))  & (h_obs_y'=floor(h_y/obsint))   &(c'=6);
-	//[h_update]  hobsval & c=5 & h<0 & h_y <0  -> 1:(h_obs'=floor(-h/obsint))  & (h_obs_y'=floor(-h_y/obsint))   &(c'=6);
-				//+(1-sl)/2: (hdot_y'=max(MINhdot,min(MAXhdot,hdot_y+1)))& (c'=4);
-	//the controller picks acceleration
-	//[h_update1] c=4 & !crash->sl:(hdotdot'=max(MINhdotdot,min(MAXhdotdot,hdotdot+1)))& (c'=0) & (hdotdot_y'=max(MINhdotdot,min(MAXhdotdot,hdotdot_y+1)))
-	//		+(1-sl)/2:(hdotdot'=max(MINhdotdot,min(MAXhdotdot,hdotdot)))& (c'=0)& (hdotdot_y'=max(MINhdotdot,min(MAXhdotdot,hdotdot_y)))
-	//		+(1-sl)/2:(hdotdot'=max(MINhdotdot,min(MAXhdotdot,hdotdot-1)))& (c'=0)& (hdotdot_y'=max(MINhdotdot,min(MAXhdotdot,hdotdot_y-1)));
-	//[h_update12] c=4 & !crash->sl:(hdotdot'=max(MINhdotdot,min(MAXhdotdot,hdotdot)))& (c'=0) & (hdotdot_y'=max(MINhdotdot,min(MAXhdotdot,hdotdot_y)))
-	//		+(1-sl)/2:(hdotdot'=max(MINhdotdot,min(MAXhdotdot,hdotdot+1)))& (c'=0)& (hdotdot_y'=max(MINhdotdot,min(MAXhdotdot,hdotdot_y+1)))
-	//		+(1-sl)/2:(hdotdot'=max(MINhdotdot,min(MAXhdotdot,hdotdot-1)))& (c'=0)& (hdotdot_y'=max(MINhdotdot,min(MAXhdotdot,hdotdot_y-1)));
-	//[h_update13] c=4 & !crash->sl:(hdotdot'=max(MINhdotdot,min(MAXhdotdot,hdotdot-1)))& (c'=0) & (hdotdot_y'=max(MINhdotdot,min(MAXhdotdot,hdotdot_y-1)))
-	//		+(1-sl)/2:(hdotdot'=max(MINhdotdot,min(MAXhdotdot,hdotdot)))& (c'=0)& (hdotdot_y'=max(MINhdotdot,min(MAXhdotdot,hdotdot_y)))
-	//		+(1-sl)/2:(hdotdot'=max(MINhdotdot,min(MAXhdotdot,hdotdot+1)))& (c'=0)& (hdotdot_y'=max(MINhdotdot,min(MAXhdotdot,hdotdot_y+1)));
 	[h_update1] !hobsval  & c=6 ->sl:(hdot'=max(MINhdot,min(MAXhdot,hdot+2))) & (hdot_y'=max(MINhdot,min(MAXhdot,hdot_y+2)))&(h_obs'=50)  & (h_obs_y'=50)   & (c'=0)+
 			(1-sl):(hdot'=max(MINhdot,min(MAXhdot,hdot))) & (hdot_y'=max(MINhdot,min(MAXhdot,hdot_y)))& (h_obs'=50)  & (h_obs_y'=50)   &(c'=0);
 	[h_update12] !hobsval  & c=6 ->sl:(hdot'=max(MINhdot,min(MAXhdot,hdot-2))) & (hdot_y'=max(MINhdot,min(MAXhdot,hdot_y+2)))& (h_obs'=50)  & (h_obs_y'=50)   &(c'=0)+

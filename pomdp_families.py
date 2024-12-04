@@ -3,6 +3,7 @@ import copy
 import math
 import operator
 import time
+from collections import defaultdict
 import paynt.cli
 import paynt.parser.sketch
 import paynt.quotient.pomdp_family
@@ -52,12 +53,14 @@ def stablesoftmax(x, temperature = 1) -> np.ndarray:
 
 class POMDPFamiliesSynthesis:
     
-    def __init__(self, project_path : str, seed : int = 11, use_softmax : bool = False, learning_rate = 0.001, minibatch_size = 256, steps = 10, use_momentum = True):
+    def __init__(self, project_path : str, seed : int = 11, use_softmax : bool = False, learning_rate = 0.001, minibatch_size = 256, steps = 10, use_momentum = True, dynamic_memory = False):
         random.seed(seed)
         np.random.seed(seed)
 
         self.gd_trace = []
         self.family_trace = []
+        
+        self.dynamic_memory = dynamic_memory
         
         self.clip_gradient_value = 5
 
@@ -74,7 +77,7 @@ class POMDPFamiliesSynthesis:
         self.beta = 0.9
 
         # load sketch
-        self.pomdp_sketch = self.load_sketch(project_path)
+        self.pomdp_sketch : paynt.quotient.pomdp_family.PomdpFamilyQuotient = self.load_sketch(project_path)
 
         self.storm_control = None
 
@@ -214,7 +217,7 @@ class POMDPFamiliesSynthesis:
                 pomdp_quotient, method="ar", fsc_synthesis=True, storm_control=storm_control
         )
         synthesizer.run(optimum_threshold=None)
-        assert synthesizer.storm_control.latest_paynt_result_fsc is not None
+        # assert synthesizer.storm_control.latest_paynt_result_fsc is not None
         fsc = synthesizer.storm_control.latest_paynt_result_fsc
         return fsc
 
@@ -234,10 +237,22 @@ class POMDPFamiliesSynthesis:
                 fsc.update_function[n][z] = { n_new:1/num_nodes for n_new in range(num_nodes) }
         return fsc
     
+    def create_subfamily(self, hole_combinations):
+        return [self.pomdp_sketch.family.construct_assignment(hole_combination) for hole_combination in hole_combinations]
+    
     def create_random_subfamily(self, family_size : int):
         hole_combinations = random.choices(list(self.pomdp_sketch.family.all_combinations()), k = family_size)
-        hole_assignments_to_test = [self.pomdp_sketch.family.construct_assignment(hole_combination) for hole_combination in hole_combinations]
-        return hole_assignments_to_test
+        return self.create_subfamily(hole_combinations)
+
+    def stratified_subfamily_sampling(self, family_size : int):
+        options = [self.pomdp_sketch.family.hole_options(hole) for hole in range(self.pomdp_sketch.family.num_holes)]
+        lb = [min(xs) for xs in options]
+        ub = [max(xs) + 1 for xs in options]
+        from scipy.stats import qmc
+        sampler = qmc.LatinHypercube(d=len(options))
+        samples = sampler.random(n=5)
+        hole_combination_samples = qmc.scale(samples, lb, ub).astype(int)
+        return self.create_subfamily(hole_combination_samples)
     
     def deterministic_fsc_to_stochastic_fsc(self, fsc):
         for n in range(fsc.num_nodes):
@@ -574,7 +589,13 @@ class POMDPFamiliesSynthesis:
         return self.gradient_descent_on_single_pomdp(pomdp, num_iters, num_nodes, **kwargs)
 
     def gradient_descent_on_single_pomdp(self, pomdp, num_iters : int, num_nodes : int, action_function_params = {}, memory_function_params = {}, resolution = {}, parameter_resolution = None, timeout = None, memory_model = None):
+        # print("BEFORE")
+        # print("PARAM", parameter_resolution, sep='\n')
+        # print("RESOL", resolution, sep='\n')
         pmc, action_function_params, memory_function_params, resolution, parameter_resolution = self.construct_pmc(pomdp, self.pomdp_sketch, self.reward_model_name, num_nodes, distinct_parameters_for_final_probability=self.use_softmax, parameter_resolution=parameter_resolution, resolution=resolution, action_function_params=action_function_params, memory_function_params=memory_function_params, memory_model=memory_model)
+        # print("AFTER")
+        # print("PARAM", parameter_resolution, sep='\n')
+        # print("RESOL", resolution, sep='\n')
         current_parameters = list(pmc.collect_all_parameters())
         
         if self.use_softmax:
@@ -593,7 +614,7 @@ class POMDPFamiliesSynthesis:
         for p in pmc.collect_all_parameters():
             assert p in action_function_params_no_const.values() or p in memory_function_params_no_const.values()
         
-        assert set(pmc.collect_all_parameters()) <= set(list(resolution.keys())), ("The parameters of the pDTMC:", pmc.collect_all_parameters(), "should be a subset of the probabilistic resolution mapping of the parameters:", list(resolution.keys()))
+        assert set(pmc.collect_all_parameters()) <= set(list(resolution.keys())), "\n".join(["The parameters of the pDTMC:", str(pmc.collect_all_parameters()), "should be a subset of the probabilistic resolution mapping of the parameters:", str(list(resolution.keys()))])
         
         if timeout:
             tik = time.time()
@@ -607,7 +628,8 @@ class POMDPFamiliesSynthesis:
         print("Before GD value:", result.at(0), 'Number of parameters:', len(current_parameters))
         
         if self.use_momentum and (self.reset_momentum or self.momentum is None):
-            self.momentum = dict(zip(all_seen_parameters, [0] * len(all_seen_parameters)))
+            self.momentum = defaultdict(lambda : 0)
+            # self.momentum = dict(zip(all_seen_parameters, [0] * len(all_seen_parameters)))
 
         direction_operator = operator.sub if self.minimizing else operator.add
         
@@ -619,16 +641,15 @@ class POMDPFamiliesSynthesis:
                 grads = checker.checkMultipleParameters(self.env, resolution, current_parameters, result.get_values())
                 softmax_grads = self.softmax_gradients(action_function_params, memory_function_params, parameter_resolution, num_nodes, grads)
                 for p in current_parameters:
-                    # TODO: implement momentum of gradients (for each parameter independently) or other optimizer tricks.
                     if self.use_momentum:
                         self.momentum[p] = self.beta * self.momentum[p] + (1 - self.beta) * self.clip_gradient(softmax_grads[p], doclip=True)
                         new_parameter_resolution[p] = direction_operator(float(parameter_resolution[p]), self.lr * self.momentum[p])
                     else:
                         new_parameter_resolution[p] = direction_operator(float(parameter_resolution[p]), self.lr * self.clip_gradient(softmax_grads[p], doclip=True))
-
+                # parameter_resolution.update(new_parameter_resolution)
                 new_resolution = self.resolution_to_softmax(action_function_params, memory_function_params, new_parameter_resolution, num_nodes)
+                # resolution.update(new_resolution)
                 instantiator = stormpy.pars.PDtmcInstantiator(pmc)
-                # self.sanity_check_pmc_at_instantiation(pmc, new_resolution)
                 instantiated_model = instantiator.instantiate(new_resolution)
                 result = stormpy.model_checking(instantiated_model, self.pomdp_sketch.get_property().property.raw_formula)
                 current_value = result.at(0)
@@ -637,7 +658,9 @@ class POMDPFamiliesSynthesis:
             else:
                 try:
                     # wrapper.resetDynamicValues() # TODO
-                    current_value, resolution = wrapper.stochasticGradientDescent(resolution)
+                    current_value, new_resolution = wrapper.stochasticGradientDescent(resolution)
+                    # resolution.update(new_resolution)
+                    resolution = new_resolution
                 except Exception as e:
                     print([float(x) for x in resolution.values()])
                     self.sanity_check_pmc_at_instantiation(pmc, resolution)
@@ -652,6 +675,11 @@ class POMDPFamiliesSynthesis:
     
     def run_gradient_descent_on_family(self, num_iters : int, num_nodes : int, assignments : list = None, timeout : int = None, random_selection : bool = False, memory_model : list[int] = None):
         current_value = None
+        
+        if self.dynamic_memory:
+            assert num_nodes == 1
+            assert memory_model is None
+            memory_model_cache = {}
         
         if memory_model is None:
             memory_model = [num_nodes] * self.nO
@@ -695,7 +723,39 @@ class POMDPFamiliesSynthesis:
             else:
                 hole_assignment = self.pomdp_sketch.family.pick_any()
             
-            current_value, new_resolution, action_function_params, memory_function_params, new_parameter_resolution = self.gradient_descent_on_single_pomdp_from_hole_assignment(hole_assignment, 10 // self.gd_steps, num_nodes, action_function_params=action_function_params, memory_function_params=memory_function_params, resolution=resolution, parameter_resolution=parameter_resolution, memory_model=memory_model)
+            pomdp_class = self.pomdp_sketch.build_pomdp(hole_assignment)
+            pomdp = pomdp_class.model
+            
+            if self.dynamic_memory and i % 2 == 0:
+                
+                hole_assignment_str = str(hole_assignment)
+                
+                if hole_assignment_str in memory_model_cache:
+                    suggest_memory_model = memory_model_cache[hole_assignment_str]
+                    print("REUSING PREVIOUSLY COMPUTED MEMORY MODEL FOR", hole_assignment_str)
+                else:
+                    print("COMPUTING MEMORY MODEL FOR", hole_assignment_str)
+                    saynt_controller : paynt.quotient.fsc.FSC = self.solve_pomdp_saynt(pomdp, self.pomdp_sketch.specification.copy(), num_nodes, timeout=10)
+                    if saynt_controller is None or saynt_controller.memory_model is None:
+                        suggest_memory_model = None
+                    else:
+                        suggest_memory_model = saynt_controller.memory_model
+                    memory_model_cache[hole_assignment_str] = suggest_memory_model
+                
+                if suggest_memory_model is not None:
+                    # suggested_increase = np.array(suggest_memory_model) > np.array(memory_model[:len(suggest_memory_model)])
+                    suggested_increase = np.array([suggest_memory_model[o] > memory_model[o] for o in range(len(suggest_memory_model))])
+                    print(suggested_increase, np.nonzero(suggested_increase)[0])
+                    if (suggested_increase).any():
+                        # obs_to_increase_memory = random.choice(np.nonzero(suggested_increase)[0])
+                        for obs_to_increase_memory in np.nonzero(suggested_increase)[0]:
+                            memory_model[obs_to_increase_memory] += 1
+                        num_nodes = max(memory_model)
+                        # parameter_resolution = {}
+                        # resolution = {}
+            
+            # current_value, new_resolution, action_function_params, memory_function_params, new_parameter_resolution = self.gradient_descent_on_single_pomdp_from_hole_assignment(hole_assignment, 10 // self.gd_steps, num_nodes, action_function_params=action_function_params, memory_function_params=memory_function_params, resolution=resolution, parameter_resolution=parameter_resolution, memory_model=memory_model)
+            current_value, new_resolution, action_function_params, memory_function_params, new_parameter_resolution = self.gradient_descent_on_single_pomdp(pomdp, 10 // self.gd_steps, num_nodes, action_function_params=action_function_params, memory_function_params=memory_function_params, resolution=resolution, parameter_resolution=parameter_resolution, memory_model=memory_model)
             
             self.current_values.append(current_value)
             
