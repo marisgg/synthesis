@@ -65,11 +65,12 @@ def run_family_experiment(num_nodes = 2):
 def determine_memory_model(gd : POMDPFamiliesSynthesis, max_num_nodes = 5, num_samples = 5):
     import numpy as np
     assignments = gd.stratified_subfamily_sampling(num_samples)
+    print(assignments)
     memory_models = []
     memory_model_matrix = np.zeros((num_samples, gd.nO), dtype=int)
     for i, assignment in enumerate(assignments):
         pomdp = gd.pomdp_sketch.build_pomdp(assignment).model
-        fsc = gd.solve_pomdp_saynt(pomdp, gd.pomdp_sketch.specification, max_num_nodes, timeout=10)
+        fsc = gd.solve_pomdp_saynt(pomdp, gd.pomdp_sketch.specification.copy(), max_num_nodes, timeout=10)
         if fsc is not None and fsc.memory_model is not None:
             memory_models.append(fsc.memory_model)
             memory_model_matrix[i, :len(fsc.memory_model)] = fsc.memory_model
@@ -203,7 +204,7 @@ def run_union(project_path, method):
 
     print(gd.get_values_on_subfamily(gd.get_dtmc_sketch(fsc), assignments)) # TODO, returns unexpected values. FSC might be incorrectly morphed back to family?
 
-run_family_softmax(AVOID, 4)
+# run_family_softmax(AVOID, 4)
 # run_family_softmax(ACO)
 # run_family_softmax(AVOID, num_nodes=2, dynamic_memory=False)
 # run_family_softmax(OBSTACLES_TEN_TWO, num_nodes=2, memory_model=[1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1], seed=0)
@@ -226,4 +227,12 @@ run_family_softmax(AVOID, 4)
     # run_subfamily(env, timeout=timeout, subfamily_size=5)
 # run_subfamily(num_nodes=3, timeout=60)
 
-# run_union(ROVER, Method.SAYNT)
+# SAYNT ERROR ACTIONS == [] (ROVER/NETWORK):
+run_family_softmax(ROVER)
+run_family_softmax(NETWORK)
+
+# UNION ASSERTIONERROR (ROVER):
+run_union(ROVER, Method.SAYNT)
+
+# UNION ERROR UNEXPECTED VALUES (ANY BENCHMARK):
+run_union(OBSTACLES_TEN_TWO, Method.SAYNT)
