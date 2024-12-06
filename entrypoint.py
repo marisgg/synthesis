@@ -62,15 +62,16 @@ def run_family_experiment(num_nodes = 2):
         with open(f"{dr}/gd-experiment.pickle", 'wb') as handle:
             pickle.dump(results, handle)
 
-def determine_memory_model(gd : POMDPFamiliesSynthesis, max_num_nodes = 5, num_samples = 5):
+def determine_memory_model(gd : POMDPFamiliesSynthesis, max_num_nodes = 5, num_samples = 5, seed = 11):
     import numpy as np
-    assignments = gd.stratified_subfamily_sampling(num_samples)
-    print(assignments)
+    assignments = gd.stratified_subfamily_sampling(num_samples, seed)
+    print([str(a) for a in assignments])
     memory_models = []
     memory_model_matrix = np.zeros((num_samples, gd.nO), dtype=int)
     for i, assignment in enumerate(assignments):
         pomdp = gd.pomdp_sketch.build_pomdp(assignment).model
-        fsc = gd.solve_pomdp_saynt(pomdp, gd.pomdp_sketch.specification.copy(), max_num_nodes, timeout=10)
+        spec = gd.pomdp_sketch.specification.copy()
+        fsc = gd.solve_pomdp_saynt(pomdp, spec, max_num_nodes, timeout=10)
         if fsc is not None and fsc.memory_model is not None:
             memory_models.append(fsc.memory_model)
             memory_model_matrix[i, :len(fsc.memory_model)] = fsc.memory_model
@@ -89,7 +90,7 @@ def run_family(project_path, num_nodes = 2, memory_model = None, dynamic_memory=
 
 def run_family_softmax(project_path, num_nodes = 2, memory_model = None, dynamic_memory=False, seed=11):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, dynamic_memory=dynamic_memory, seed=seed)
-    mem = determine_memory_model(gd)
+    mem = determine_memory_model(gd, seed=seed)
     print(mem)
     exit()
     gd.run_gradient_descent_on_family(1000, num_nodes, memory_model=memory_model)

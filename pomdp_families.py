@@ -244,12 +244,12 @@ class POMDPFamiliesSynthesis:
         hole_combinations = random.choices(list(self.pomdp_sketch.family.all_combinations()), k = family_size)
         return self.create_subfamily(hole_combinations)
 
-    def stratified_subfamily_sampling(self, family_size : int):
+    def stratified_subfamily_sampling(self, family_size : int, seed : int):
         options = [self.pomdp_sketch.family.hole_options(hole) for hole in range(self.pomdp_sketch.family.num_holes)]
         lb = [min(xs) for xs in options]
         ub = [max(xs) + 1 for xs in options]
         from scipy.stats import qmc
-        sampler = qmc.LatinHypercube(d=len(options))
+        sampler = qmc.LatinHypercube(d=len(options), seed=seed)
         samples = sampler.random(n=5)
         hole_combination_samples = qmc.scale(samples, lb, ub).astype(int)
         return self.create_subfamily(hole_combination_samples)
