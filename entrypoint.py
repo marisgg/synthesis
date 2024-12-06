@@ -142,8 +142,12 @@ def run_union(project_path, method):
         pomdps.append(pomdp)
         if observation_action_to_true_action is None:
             observation_action_to_true_action = obs_action_to_true_action
-        else:
-            assert observation_action_to_true_action == obs_action_to_true_action, "\n".join(['', str(observation_action_to_true_action), "=/=", str(obs_action_to_true_action)])
+            continue
+        # fill in labels for missing observations
+        for obs,true_action in enumerate(obs_action_to_true_action):
+            if true_action is None:
+                obs_action_to_true_action[obs] = observation_action_to_true_action[obs].copy()
+        assert observation_action_to_true_action == obs_action_to_true_action, "\n".join(['', str(observation_action_to_true_action), "=/=", str(obs_action_to_true_action)])
 
     union_pomdp = payntbind.synthesis.createModelUnion(pomdps)
 
