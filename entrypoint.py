@@ -269,4 +269,7 @@ def run_union(project_path, method):
 # run_family_softmax(OBSTACLES_EIGHTH_THREE, num_nodes=2, memory_model=[1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,2,2,2,2,2,2,2,2,2,2,1])
 
 for env in ENVS:
-    run_subfamily(env, timeout=60, subfamily_size=5, num_nodes=5, determine_memory_model=True, stratified=True)
+    try:
+        run_subfamily(env, timeout=60, subfamily_size=5, num_nodes=5, determine_memory_model=True, stratified=True)
+    except:
+        pass
