@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 
+VOLUME_DIR='/opt/payntdev'
+
 # Fix GIL issues in Stormpy for Saynt
 cd /opt/stormpy
-git apply GILhack.patch
+git apply ${VOLUME_DIR}/GILhack.patch
 python3 setup.py develop
 
 # Install Payntbind
-cd /opt/payntdev
+cd ${VOLUME_DIR}/payntbind
 python3 setup.py develop
 
 # RUN
+cd ${VOLUME_DIR}
 python3 -m pip install scipy
 python3 entrypoint.py
