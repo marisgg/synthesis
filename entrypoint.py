@@ -1,3 +1,4 @@
+import copy
 import os
 import random
 import stormpy
@@ -7,7 +8,7 @@ from pomdp_families import Method
 
 import pickle
 
-BASE_OUTPUT_DIR = "./outputs/second"
+BASE_OUTPUT_DIR = "./output-new"
 
 BASE_SKETCH_DIR = 'models/pomdp/sketches'
 
@@ -23,7 +24,7 @@ DPM = f"{BASE_SKETCH_DIR}/dpm"
 ROVER = f"{BASE_SKETCH_DIR}/rover"
 NETWORK = f"{BASE_SKETCH_DIR}/network"
 
-ENVS = [OBSTACLES_TEN_TWO, OBSTACLES_EIGHTH_THREE, DPM, AVOID]
+ENVS = [OBSTACLES_TEN_TWO, OBSTACLES_EIGHTH_THREE, DPM, AVOID, ROVER, NETWORK]
 
 def run_family_experiment(num_nodes = 2):
     for project_path in ENVS:
@@ -62,49 +63,38 @@ def run_family_experiment(num_nodes = 2):
         with open(f"{dr}/gd-experiment.pickle", 'wb') as handle:
             pickle.dump(results, handle)
 
-def determine_memory_model(gd : POMDPFamiliesSynthesis, max_num_nodes = 5, num_samples = 5, seed = 11):
-    import numpy as np
-    assignments = gd.stratified_subfamily_sampling(num_samples, seed)
-    print([str(a) for a in assignments])
-    memory_models = []
-    memory_model_matrix = np.zeros((num_samples, gd.nO), dtype=int)
-    for i, assignment in enumerate(assignments):
-        pomdp = gd.pomdp_sketch.build_pomdp(assignment).model
-        spec = gd.pomdp_sketch.specification.copy()
-        fsc = gd.solve_pomdp_saynt(pomdp, spec, max_num_nodes, timeout=10)
-        if fsc is not None and fsc.memory_model is not None:
-            memory_models.append(fsc.memory_model)
-            memory_model_matrix[i, :len(fsc.memory_model)] = fsc.memory_model
-    
-    print(memory_models)
-    print(memory_model_matrix)
-    pointwise_max_memory_model = memory_model_matrix.max(axis=0)
-    print(pointwise_max_memory_model)
-    
-    return pointwise_max_memory_model
-    
+def determine_memory_model(project_path, num_nodes = 2, memory_model = None, dynamic_memory=False, seed=11):
+    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, dynamic_memory=dynamic_memory, seed=seed)
+    assignments = gd.stratified_subfamily_sampling(num_samples=5, seed=seed)
+    mem = gd.determine_memory_model_from_assignments(gd, assignments, max_num_nodes=num_nodes, seed=seed)
+    print(mem)
+    exit()
 
-def run_family(project_path, num_nodes = 2, memory_model = None, dynamic_memory=True):
+def run_family(project_path, num_nodes = 2, memory_model = None, dynamic_memory=False):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=False, steps=10, dynamic_memory=dynamic_memory)
     gd.run_gradient_descent_on_family(1000, num_nodes, memory_model=memory_model)
 
 def run_family_softmax(project_path, num_nodes = 2, memory_model = None, dynamic_memory=False, seed=11):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, dynamic_memory=dynamic_memory, seed=seed)
-    mem = determine_memory_model(gd, seed=seed)
-    print(mem)
-    exit()
     gd.run_gradient_descent_on_family(1000, num_nodes, memory_model=memory_model)
 
-def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2, memory_model = None, baselines = [Method.SAYNT, Method.GRADIENT]):
-    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01)
-    subfamily_assigments = gd.create_random_subfamily(subfamily_size)
+def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2, memory_model = None, baselines = [Method.GRADIENT], seed=11, stratified=True, determine_memory_model=True):
+    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, seed=seed)
+
+    if stratified:
+        subfamily_assigments = gd.stratified_subfamily_sampling(subfamily_size, seed=seed)
+    else:
+        subfamily_assigments = gd.create_random_subfamily(subfamily_size)
+    
+    if determine_memory_model:
+        memory_model = gd.determine_memory_model_from_assignments(subfamily_assigments,max_num_nodes=num_nodes)
 
     dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/{subfamily_size}/"
     os.makedirs(dr, exist_ok=True)
 
     for method in baselines:
 
-        subfamily_other_results = gd.experiment_on_subfamily(subfamily_assigments, num_nodes, method, num_gd_iterations=1000, timeout=timeout, evaluate_on_whole_family=True)
+        subfamily_other_results = gd.experiment_on_subfamily(subfamily_assigments, num_nodes, method, memory_model=memory_model, num_iters=1000, timeout=timeout, evaluate_on_whole_family=True)
 
         with open(f"{dr}/{method.name.lower()}.pickle", 'wb') as handle:
             pickle.dump(subfamily_other_results, handle)
@@ -137,6 +127,7 @@ def run_union(project_path, method):
     pomdps = []
     # make sure that all POMDPs have the same action mapping so we can store only one copy
     observation_action_to_true_action = None
+    nodes = 2
     for assignment in assignments:
         pomdp,obs_action_to_true_action = gd.assignment_to_pomdp(gd.pomdp_sketch,assignment,restore_absorbing_states=False)
         pomdps.append(pomdp)
@@ -147,67 +138,98 @@ def run_union(project_path, method):
         for obs,true_action in enumerate(obs_action_to_true_action):
             if true_action is None:
                 obs_action_to_true_action[obs] = observation_action_to_true_action[obs].copy()
+                # observation_action_to_true_action[obs] = obs_action_to_true_action[obs].copy()
         assert observation_action_to_true_action == obs_action_to_true_action, "\n".join(['', str(observation_action_to_true_action), "=/=", str(obs_action_to_true_action)])
 
     union_pomdp = payntbind.synthesis.createModelUnion(pomdps)
-
-    nodes = 2
     
     if method == Method.SAYNT:
-        fsc = gd.solve_pomdp_saynt(union_pomdp, gd.pomdp_sketch.specification, nodes, timeout=15)
+        fsc = gd.solve_pomdp_saynt(union_pomdp, gd.pomdp_sketch.specification, nodes, timeout=3)
+        nodes = fsc.num_nodes
     
     elif method == Method.GRADIENT:
-        value, resolution, action_function_params, memory_function_params, *_ = gd.gradient_descent_on_single_pomdp(union_pomdp, 150, 2, timeout=10, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={})
-        fsc = gd.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, 2, gd.nO, gd.pomdp_sketch.observation_to_actions)
+        value, resolution, action_function_params, memory_function_params, *_ = gd.gradient_descent_on_single_pomdp(union_pomdp, 150, nodes, timeout=10, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={})
+        fsc = gd.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, nodes, gd.nO, gd.pomdp_sketch.observation_to_actions)
 
-    # get rid of the fresh observation
+   
     initial_node = fsc.update_function[0][-1]
+    
+    print("\n\n\nOBSERVATION LABELS:", fsc.observation_labels, '\n\n\n')
+    
+    print([fsc.action_labels[act] for act in fsc.action_function[0]])
+    
+    new_fsc = copy.deepcopy(fsc)
+    # get rid of the fresh observation 
     for n in range(nodes):
-        fsc.action_function[n] = fsc.action_function[n][:-1]
-        assert len(fsc.action_function[n]) == gd.nO
-        fsc.update_function[n] = fsc.update_function[n][:-1]
-        assert len(fsc.update_function[n]) == gd.nO
+        new_fsc.action_function[n] = fsc.action_function[n][:-1]
+        assert len(new_fsc.action_function[n]) == gd.nO
+        new_fsc.update_function[n] = fsc.update_function[n][:-1]
+        assert len(new_fsc.update_function[n]) == gd.nO
 
-    fsc.num_observations -= 1
+    new_fsc.num_observations -= 1
+    
+    print("NODES: ", nodes)
 
     # ensure that 0 is the initial node
     fsc_update_fixed = list(range(nodes))
     if initial_node != 0:
+        assert False
         fsc_update_fixed[0] = initial_node
         fsc_update_fixed[initial_node] = 0
-        tmp = fsc.action_function[0]; fsc.action_function[0] = fsc.action_function[initial_node]; fsc.action_function[initial_node] = tmp
-        tmp = fsc.update_function[0]; fsc.update_function[0] = fsc.update_function[initial_node]; fsc.update_function[initial_node] = tmp
+        tmp = copy.copy(fsc.action_function[0])
+        new_fsc.action_function[0] = copy.copy(fsc.action_function[initial_node])
+        new_fsc.action_function[initial_node] = tmp
+        tmp = copy.copy(fsc.update_function[0])
+        new_fsc.update_function[0] = copy.copy(fsc.update_function[initial_node])
+        new_fsc.update_function[initial_node] = tmp
     for n in range(nodes):
-        for o in range(fsc.num_observations):
-            fsc.update_function[n][o] = fsc_update_fixed[fsc.update_function[n][o]]
+        for o in range(new_fsc.num_observations):
+            new_fsc.update_function[n][o] = fsc_update_fixed[new_fsc.update_function[n][o]]
 
     # ensure that FSC uses the same ordering of action labels as the POMDP sketch (required by fsc.check())
     for n in range(nodes):
-        for o in range(fsc.num_observations):
-            action_label = fsc.action_labels[fsc.action_function[n][o]]
-            fsc.action_function[n][o] = gd.pomdp_sketch.action_labels.index(action_label)
-    fsc.action_labels = gd.pomdp_sketch.action_labels.copy()
+        for o in range(new_fsc.num_observations):
+            action_label = new_fsc.action_labels[new_fsc.action_function[n][o]]
+            # action_label = observation_action_to_true_action[o][action_label]
+            new_fsc.action_function[n][o] = gd.pomdp_sketch.action_labels.index(action_label)
+    
+    new_fsc.action_labels = gd.pomdp_sketch.action_labels.copy()
 
     # fix possibly dummy actions
     for n in range(nodes):
-        for o in range(fsc.num_observations):
-            fsc_action_label = fsc.action_labels[fsc.action_function[n][o]]
+        for o in range(new_fsc.num_observations):
+            fsc_action_label = new_fsc.action_labels[new_fsc.action_function[n][o]]
             true_action_label = observation_action_to_true_action[o][fsc_action_label]
-            fsc.action_function[n][o] = fsc.action_labels.index(true_action_label)
+            new_fsc.action_function[n][o] = gd.pomdp_sketch.action_labels.index(true_action_label)
+            assert gd.pomdp_sketch.action_labels.index(true_action_label) == new_fsc.action_labels.index(true_action_label)
+            new_fsc.action_function[n][o] = new_fsc.action_labels.index(true_action_label)
 
-    fsc.check(gd.pomdp_sketch.observation_to_actions)
+    new_fsc.check(gd.pomdp_sketch.observation_to_actions)
     # return
     # TODO make FSC stochastic ?
     
-    print(fsc)
+    print("OLF FSC:", [fsc.action_labels[act] for act in fsc.action_function[0]])
+    print("NEW FSC:", [new_fsc.action_labels[act] for act in new_fsc.action_function[0]])
+    # exit()
     
-    fsc = gd.deterministic_fsc_to_stochastic_fsc(fsc)
+    # print(new_fsc)
     
-    print(fsc)
+    import paynt.quotient.fsc
+    
+    # paynt.quotient.fsc.FSC()
+    
+    new_fsc = gd.deterministic_fsc_to_stochastic_fsc(new_fsc)
+    
+    # print(new_fsc)
+    
+    print([new_fsc.action_labels[next(iter(act.keys()))] for act in new_fsc.action_function[0]])
 
     print(gd.pomdp_sketch.observation_to_actions)
+    
+    # print(gd.paynt_call_given_fsc(fsc))
 
-    print(gd.get_values_on_subfamily(gd.get_dtmc_sketch(fsc), assignments)) # TODO, returns unexpected values. FSC might be incorrectly morphed back to family?
+    print(gd.get_values_on_subfamily(gd.get_dtmc_sketch(new_fsc), assignments)) # TODO, returns unexpected values. FSC might be incorrectly morphed back to family?
+    
 
 # run_family_softmax(AVOID, 4)
 # run_family_softmax(ACO)
@@ -228,16 +250,21 @@ def run_union(project_path, method):
 # run_family_softmax(OBSTACLES_TEN_TWO, 4)
 # run_family_experiment()
 # run_subfamily(ROVER, timeout=30)
-# for env, timeout in zip([DPM, AVOID], [10, 60]):
+# for env, timeout in zip([DPM, AVOID, OBSTACLES_TEN_TWO, ROVER, NETWORK], [10, 60]):
     # run_subfamily(env, timeout=timeout, subfamily_size=5)
 # run_subfamily(num_nodes=3, timeout=60)
 
 # SAYNT ERROR ACTIONS == [] (ROVER/NETWORK):
-run_family_softmax(ROVER)
-run_family_softmax(NETWORK)
+# run_family_softmax(ROVER, num_nodes=3)
+# determine_memory_model(NETWORK)
 
 # UNION ASSERTIONERROR (ROVER):
-run_union(ROVER, Method.SAYNT)
+# run_union(ROVER, Method.SAYNT)
 
 # UNION ERROR UNEXPECTED VALUES (ANY BENCHMARK):
-run_union(OBSTACLES_TEN_TWO, Method.SAYNT)
+# run_union(OBSTACLES_TEN_TWO, Method.SAYNT)
+
+# run_union(ROVER, Method.SAYNT)
+
+for env in ENVS:
+    run_subfamily(env, timeout=6, subfamily_size=5, num_nodes=4, determine_memory_model=False, stratified=True)

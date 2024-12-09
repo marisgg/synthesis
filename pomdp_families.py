@@ -23,6 +23,7 @@ else:
     import pycarl.gmp as pc
 
 import numpy as np
+from scipy.stats import qmc
 
 import payntbind
 
@@ -248,11 +249,31 @@ class POMDPFamiliesSynthesis:
         options = [self.pomdp_sketch.family.hole_options(hole) for hole in range(self.pomdp_sketch.family.num_holes)]
         lb = [min(xs) for xs in options]
         ub = [max(xs) + 1 for xs in options]
-        from scipy.stats import qmc
         sampler = qmc.LatinHypercube(d=len(options), seed=seed)
         samples = sampler.random(n=family_size)
-        hole_combination_samples = qmc.scale(samples, lb, ub).astype(int)
+        hole_combination_samples = qmc.scale(samples, lb, ub).astype(int).tolist()
+        print(hole_combination_samples)
+        assert len(set([tuple(x) for x in hole_combination_samples])) == len(hole_combination_samples)
         return self.create_subfamily(hole_combination_samples)
+
+    def determine_memory_model_from_assignments(self, assignments : list, max_num_nodes = 5):
+        print([str(a) for a in assignments])
+        memory_models = []
+        memory_model_matrix = np.zeros((len(assignments), self.nO), dtype=int)
+        for i, assignment in enumerate(assignments):
+            pomdp = self.pomdp_sketch.build_pomdp(assignment).model
+            spec = self.pomdp_sketch.specification.copy()
+            fsc : paynt.quotient.fsc.FSC = self.solve_pomdp_saynt(pomdp, spec, max_num_nodes, timeout=10)
+            if fsc is not None and fsc.memory_model is not None:
+                memory_models.append(fsc.memory_model)
+                memory_model_matrix[i, :len(fsc.memory_model)] = fsc.memory_model
+        
+        print(memory_models)
+        print(memory_model_matrix)
+        pointwise_max_memory_model = memory_model_matrix.max(axis=0)
+        print(pointwise_max_memory_model)
+        
+        return np.minimum(pointwise_max_memory_model, max_num_nodes)
     
     def deterministic_fsc_to_stochastic_fsc(self, fsc):
         for n in range(fsc.num_nodes):
@@ -272,7 +293,7 @@ class POMDPFamiliesSynthesis:
         fsc.is_deterministic = False
         return fsc
 
-    def experiment_on_subfamily(self, hole_assignments_to_test : list, num_nodes : int, method : Method, timeout=15, num_gd_iterations=1000, evaluate_on_whole_family=False):
+    def experiment_on_subfamily(self, hole_assignments_to_test : list, num_nodes : int, method : Method, timeout=15, evaluate_on_whole_family=False, **gd_kwargs):
         results = {}
 
         nO = self.pomdp_sketch.num_observations
@@ -284,7 +305,7 @@ class POMDPFamiliesSynthesis:
         for i, assignment in enumerate(hole_assignments_to_test):
             
             if method.value == method.GRADIENT.value:
-                value, resolution, action_function_params, memory_function_params, *_ = self.gradient_descent_on_single_pomdp_from_hole_assignment(assignment, num_gd_iterations, num_nodes, timeout=timeout, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={})
+                value, resolution, action_function_params, memory_function_params, *_ = self.gradient_descent_on_single_pomdp_from_hole_assignment(assignment, num_nodes=num_nodes, timeout=timeout, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={}, **gd_kwargs)
                 print(i, assignment, value)
                 fsc = self.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, nO, self.pomdp_sketch.observation_to_actions)
             elif method.value > method.GRADIENT.value:
@@ -329,7 +350,8 @@ class POMDPFamiliesSynthesis:
 
     # @profile
     def construct_pmc(self, pomdp, pomdp_sketch, reward_model_name, num_nodes, action_function_params = {}, memory_function_params = {}, resolution = {}, parameter_resolution = None, distinct_parameters_for_final_probability = False, sanity_checks = False, memory_model = None):
-        # pycarl.clear_pools()
+        if action_function_params == memory_function_params == resolution == {}:
+            pycarl.clear_pools()
         
         builder : stormpy.storage.storage.ParametricSparseMatrixBuilder = stormpy.storage.ParametricSparseMatrixBuilder()
         
@@ -589,13 +611,9 @@ class POMDPFamiliesSynthesis:
         return self.gradient_descent_on_single_pomdp(pomdp, num_iters, num_nodes, **kwargs)
 
     def gradient_descent_on_single_pomdp(self, pomdp, num_iters : int, num_nodes : int, action_function_params = {}, memory_function_params = {}, resolution = {}, parameter_resolution = None, timeout = None, memory_model = None):
-        # print("BEFORE")
-        # print("PARAM", parameter_resolution, sep='\n')
-        # print("RESOL", resolution, sep='\n')
+        if memory_model is None:
+            memory_model = [num_nodes] * self.nO
         pmc, action_function_params, memory_function_params, resolution, parameter_resolution = self.construct_pmc(pomdp, self.pomdp_sketch, self.reward_model_name, num_nodes, distinct_parameters_for_final_probability=self.use_softmax, parameter_resolution=parameter_resolution, resolution=resolution, action_function_params=action_function_params, memory_function_params=memory_function_params, memory_model=memory_model)
-        # print("AFTER")
-        # print("PARAM", parameter_resolution, sep='\n')
-        # print("RESOL", resolution, sep='\n')
         current_parameters = list(pmc.collect_all_parameters())
         
         if self.use_softmax:
