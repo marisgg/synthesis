@@ -702,7 +702,7 @@ class POMDPFamiliesSynthesis:
         if memory_model is None:
             memory_model = [num_nodes] * self.nO
         
-        assert max(memory_model) == num_nodes
+        assert max(memory_model) <= num_nodes
         
         action_function_params = {}
         memory_function_params = {}

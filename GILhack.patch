@@ -1,0 +1,22 @@
+From ab81705e7b4336ca109bdcf1da4d512bfa98f36f Mon Sep 17 00:00:00 2001
+From: Filip Macak <filip.macak1999@gmail.com>
+Date: Wed, 18 Sep 2024 20:50:17 +0200
+Subject: [PATCH] Fixing SAYNT double free problem
+
+---
+ src/pomdp/quantitative_analysis.cpp | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/pomdp/quantitative_analysis.cpp b/src/pomdp/quantitative_analysis.cpp
+index eec6cb5ff..546a76391 100644
+--- a/src/pomdp/quantitative_analysis.cpp
++++ b/src/pomdp/quantitative_analysis.cpp
+@@ -16,7 +16,7 @@ void define_belief_exploration(py::module& m, std::string const& vtSuffix) {
+     py::class_<BeliefExplorationPomdpModelChecker<ValueType>> belmc(m, ("BeliefExplorationModelChecker" + vtSuffix).c_str());
+     belmc.def(py::init<std::shared_ptr<Pomdp<ValueType>>, Options<ValueType>>(), py::arg("model"), py::arg("options"));
+ 
+-    belmc.def("check", py::overload_cast<storm::logic::Formula const&,additionalCutoffValueType<ValueType> const&>(&BeliefExplorationPomdpModelChecker<ValueType>::check), py::arg("formula"), py::arg("cutoff_values"));
++    belmc.def("check", py::overload_cast<storm::logic::Formula const&,additionalCutoffValueType<ValueType> const&>(&BeliefExplorationPomdpModelChecker<ValueType>::check), py::arg("formula"), py::arg("cutoff_values"), py::call_guard<py::gil_scoped_release>());
+     belmc.def("check_with_preprocessing_environment", py::overload_cast<storm::logic::Formula const&, storm::Environment const&, additionalCutoffValueType<ValueType> const&>(&BeliefExplorationPomdpModelChecker<ValueType>::check), py::arg("formula"), py::arg("pre_processing_environment"), py::arg("cutoff_values"));
+     belmc.def("check_with_environment", py::overload_cast<storm::Environment const&, storm::logic::Formula const&, additionalCutoffValueType<ValueType> const&>(&BeliefExplorationPomdpModelChecker<ValueType>::check), py::arg("environment"), py::arg("formula"), py::arg("cutoff_values"));
+     belmc.def("check_with_environment_and_pre_processing_environment", py::overload_cast<storm::Environment const&, storm::logic::Formula const&, storm::Environment const&, additionalCutoffValueType<ValueType> const&>(&BeliefExplorationPomdpModelChecker<ValueType>::check), py::arg("environment"), py::arg("formula"), py::arg("pre_processing_environment"), py::arg("cutoff_values"));

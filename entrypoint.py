@@ -68,7 +68,7 @@ def determine_memory_model(project_path, num_nodes = 2, memory_model = None, dyn
     assignments = gd.stratified_subfamily_sampling(num_samples=5, seed=seed)
     mem = gd.determine_memory_model_from_assignments(gd, assignments, max_num_nodes=num_nodes, seed=seed)
     print(mem)
-    exit()
+    return mem
 
 def run_family(project_path, num_nodes = 2, memory_model = None, dynamic_memory=False):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=False, steps=10, dynamic_memory=dynamic_memory)
@@ -78,7 +78,7 @@ def run_family_softmax(project_path, num_nodes = 2, memory_model = None, dynamic
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, dynamic_memory=dynamic_memory, seed=seed)
     gd.run_gradient_descent_on_family(1000, num_nodes, memory_model=memory_model)
 
-def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2, memory_model = None, baselines = [Method.GRADIENT], seed=11, stratified=True, determine_memory_model=True):
+def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2, memory_model = None, baselines = [Method.GRADIENT, Method.SAYNT], seed=11, stratified=True, determine_memory_model=True):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, seed=seed)
 
     if stratified:
@@ -266,5 +266,7 @@ def run_union(project_path, method):
 
 # run_union(ROVER, Method.SAYNT)
 
+# run_family_softmax(OBSTACLES_EIGHTH_THREE, num_nodes=2, memory_model=[1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,2,2,2,2,2,2,2,2,2,2,1])
+
 for env in ENVS:
-    run_subfamily(env, timeout=6, subfamily_size=5, num_nodes=4, determine_memory_model=False, stratified=True)
+    run_subfamily(env, timeout=60, subfamily_size=5, num_nodes=5, determine_memory_model=True, stratified=True)
