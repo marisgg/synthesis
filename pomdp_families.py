@@ -267,7 +267,7 @@ class POMDPFamiliesSynthesis:
             if fsc is not None and fsc.memory_model is not None:
                 memory_models.append(fsc.memory_model)
                 memory_model_matrix[i, :len(fsc.memory_model)] = fsc.memory_model
-        
+
         print(memory_models)
         print(memory_model_matrix)
         pointwise_max_memory_model = memory_model_matrix.max(axis=0)
@@ -275,6 +275,44 @@ class POMDPFamiliesSynthesis:
         
         return np.minimum(pointwise_max_memory_model, max_num_nodes)
     
+    def memory_model_from_belief_exploration(self, assignment):
+        pomdp = self.pomdp_sketch.build_pomdp(assignment).model
+        specification = self.pomdp_sketch.specification.copy()
+        pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, specification)
+
+        # build Storm control
+        storm_control = paynt.quotient.storm_pomdp_control.StormPOMDPControl()
+        storm_control.set_options(
+            storm_options="cutoff", get_storm_result=None, iterative_storm=None, use_storm_cutoffs=False,
+            unfold_strategy_storm="storm", prune_storm=True, export_fsc_storm=None, export_fsc_paynt=None
+        )
+        storm_control.quotient = pomdp_quotient
+        storm_control.pomdp = pomdp
+        storm_control.spec_formulas = specification.stormpy_formulae()
+
+        # unfold belief and collect memory hints
+        storm_control.get_storm_result()
+        memory_model = [1] * self.pomdp_sketch.num_observations
+        for obs,nodes in storm_control.memory_vector.items():
+            memory_model[obs] = nodes
+        return memory_model
+
+    def determine_memory_model_from_assignments_2(self, assignments : list, max_num_nodes = 5):
+        print([str(a) for a in assignments])
+        memory_models = []
+        memory_model_matrix = np.zeros((len(assignments), self.nO), dtype=int)
+
+        for i, assignment in enumerate(assignments):
+            memory_model = self.memory_model_from_belief_exploration(assignment)
+            memory_models.append(memory_model)
+            memory_model_matrix[i, :len(memory_model)] = memory_model
+
+        print(memory_models)
+        print(memory_model_matrix)
+        pointwise_max_memory_model = memory_model_matrix.max(axis=0)
+        print(pointwise_max_memory_model)
+        return np.minimum(pointwise_max_memory_model, max_num_nodes)
+
     def deterministic_fsc_to_stochastic_fsc(self, fsc):
         for n in range(fsc.num_nodes):
             for o in range(self.nO):
