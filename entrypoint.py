@@ -6,11 +6,15 @@ import payntbind
 from pomdp_families import POMDPFamiliesSynthesis
 from pomdp_families import Method
 
+from multiprocessing import Pool
+
 import pickle
 
-BASE_OUTPUT_DIR = "./output-new"
+BASE_OUTPUT_DIR = "./output-parallel-family"
 
 BASE_SKETCH_DIR = 'models/pomdp/sketches'
+
+
 
 # WIP models, might get deleted:
 ACO = f"{BASE_SKETCH_DIR}/aco"
@@ -31,7 +35,7 @@ def run_family_experiment(project_path, num_nodes = 2, memory_model=None, timeou
     dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/"
     os.makedirs(dr, exist_ok=True)
 
-    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01)
+    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=False)
     gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, memory_model=memory_model)
 
     results = {}
@@ -87,6 +91,7 @@ def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2
     
     if determine_memory_model:
         memory_model = gd.determine_memory_model_from_assignments(subfamily_assigments,max_num_nodes=num_nodes)
+        num_nodes = max(memory_model)
 
     dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/{subfamily_size}/"
     os.makedirs(dr, exist_ok=True)
@@ -269,7 +274,7 @@ def run_union(project_path, method):
 
 # run_family_softmax(OBSTACLES_EIGHTH_THREE, num_nodes=2, memory_model=[1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,2,2,2,2,2,2,2,2,2,2,1])
 
-for env in ENVS:
+def run(env):
     # try:
         # memory_model = run_subfamily(env, timeout=60, subfamily_size=5, num_nodes=5, determine_memory_model=True, stratified=True)
     # except Exception as e:
@@ -277,7 +282,14 @@ for env in ENVS:
         # print(e)
     try:
         memory_model = determine_memory_model(env, 5)
-        run_family_experiment(env, 5, memory_model, max_iter=1000, timeout=300)
+        # run_family_softmax(env, num_nodes=max(memory_model), memory_model=memory_model, dynamic_memory=False, seed=11)
+        run_family_experiment(env, max(memory_model), memory_model, max_iter=1000, timeout=600)
     except Exception as e:
         print("FULL FAMILY GRADIENT DESCENT EXPERIMENT FAILED FOR", env)
         print(e)
+
+with Pool(len(ENVS)) as p:
+    p.map(run, ENVS)
+
+# for env in ENVS:
+    # run(env)
