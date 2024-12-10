@@ -31,8 +31,8 @@ def run_family_experiment(project_path, num_nodes = 2, memory_model=None, timeou
     dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/"
     os.makedirs(dr, exist_ok=True)
 
-    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=False, memory_model=memory_model)
-    gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout)
+    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01)
+    gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, memory_model=memory_model)
 
     results = {}
     results['gd-no-momentum'] = {
@@ -41,8 +41,8 @@ def run_family_experiment(project_path, num_nodes = 2, memory_model=None, timeou
         'current_values' : gd.current_values
     }
 
-    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=True, memory_model=memory_model)
-    gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, random_selection=True)
+    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=True)
+    gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, memory_model=memory_model, random_selection=True)
     
     results['gd-random'] = {
         'family_trace' : gd.family_trace,
@@ -50,8 +50,8 @@ def run_family_experiment(project_path, num_nodes = 2, memory_model=None, timeou
         'current_values' : gd.current_values
     }
 
-    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=True, memory_model=memory_model)
-    gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout)
+    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=True)
+    gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, memory_model=memory_model)
 
     results['gd-normal'] = {
         'family_trace' : gd.family_trace,
@@ -62,8 +62,8 @@ def run_family_experiment(project_path, num_nodes = 2, memory_model=None, timeou
     with open(f"{dr}/gd-experiment.pickle", 'wb') as handle:
         pickle.dump(results, handle)
 
-def determine_memory_model(project_path, num_nodes = 2, memory_model = None, dynamic_memory=False, seed=11):
-    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, dynamic_memory=dynamic_memory, seed=seed)
+def determine_memory_model(project_path, num_nodes = 2, seed=11):
+    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, seed=seed)
     assignments = gd.stratified_subfamily_sampling(num_samples=5, seed=seed)
     mem = gd.determine_memory_model_from_assignments(gd, assignments, max_num_nodes=num_nodes, seed=seed)
     print(mem)
@@ -270,12 +270,13 @@ def run_union(project_path, method):
 # run_family_softmax(OBSTACLES_EIGHTH_THREE, num_nodes=2, memory_model=[1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,2,2,2,2,2,2,2,2,2,2,1])
 
 for env in ENVS:
+    # try:
+        # memory_model = run_subfamily(env, timeout=60, subfamily_size=5, num_nodes=5, determine_memory_model=True, stratified=True)
+    # except Exception as e:
+        # print("SUBFAMILY EXPERIMENT FAILED FOR", env)
+        # print(e)
     try:
-        memory_model = run_subfamily(env, timeout=60, subfamily_size=5, num_nodes=5, determine_memory_model=True, stratified=True)
-    except Exception as e:
-        print("SUBFAMILY EXPERIMENT FAILED FOR", env)
-        print(e)
-    try:
+        memory_model = determine_memory_model(env, 5)
         run_family_experiment(env, 5, memory_model, max_iter=1000, timeout=300)
     except Exception as e:
         print("FULL FAMILY GRADIENT DESCENT EXPERIMENT FAILED FOR", env)
