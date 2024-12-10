@@ -66,7 +66,7 @@ def run_family_experiment(project_path, num_nodes = 2, memory_model=None, timeou
     with open(f"{dr}/gd-experiment.pickle", 'wb') as handle:
         pickle.dump(results, handle)
 
-def determine_memory_model(project_path, num_nodes = 2, seed=11, num_samples=5):
+def determine_memory_model_stratified(project_path, num_nodes = 2, seed=11, num_samples=5):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, seed=seed)
     assignments = gd.stratified_subfamily_sampling(num_samples, seed=seed)
     mem = gd.determine_memory_model_from_assignments(assignments, max_num_nodes=num_nodes)
@@ -179,7 +179,6 @@ def run_union(project_path, method):
     # ensure that 0 is the initial node
     fsc_update_fixed = list(range(nodes))
     if initial_node != 0:
-        assert False
         fsc_update_fixed[0] = initial_node
         fsc_update_fixed[initial_node] = 0
         tmp = copy.copy(fsc.action_function[0])
@@ -275,18 +274,20 @@ def run_union(project_path, method):
 # run_family_softmax(OBSTACLES_EIGHTH_THREE, num_nodes=2, memory_model=[1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,2,2,2,2,2,2,2,2,2,2,1])
 
 def run(env):
+    memory_model = None
     try:
         memory_model = run_subfamily(env, timeout=60, subfamily_size=5, num_nodes=5, determine_memory_model=True, stratified=True)
     except Exception as e:
         print("SUBFAMILY EXPERIMENT FAILED FOR", env)
         print(e)
-    # try:
-    #     memory_model = determine_memory_model(env, 5)
-    #     # run_family_softmax(env, num_nodes=max(memory_model), memory_model=memory_model, dynamic_memory=False, seed=11)
-    #     run_family_experiment(env, max(memory_model), memory_model, max_iter=1000, timeout=600)
-    # except Exception as e:
-    #     print("FULL FAMILY GRADIENT DESCENT EXPERIMENT FAILED FOR", env)
-    #     print(e)
+    try:
+        if memory_model is None:
+            memory_model = determine_memory_model_stratified(env, 5)
+        # run_family_softmax(env, num_nodes=max(memory_model), memory_model=memory_model, dynamic_memory=False, seed=11)
+        run_family_experiment(env, max(memory_model), memory_model, max_iter=1000, timeout=600)
+    except Exception as e:
+        print("FULL FAMILY GRADIENT DESCENT EXPERIMENT FAILED FOR", env)
+        print(e)
 
 with Pool(len(ENVS)) as p:
     p.map(run, ENVS)
