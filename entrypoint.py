@@ -10,7 +10,7 @@ from multiprocessing import Pool
 
 import pickle
 
-BASE_OUTPUT_DIR = "./output-parallel-family"
+BASE_OUTPUT_DIR = "./output-parallel-subfamily"
 
 BASE_SKETCH_DIR = 'models/pomdp/sketches'
 
@@ -275,18 +275,18 @@ def run_union(project_path, method):
 # run_family_softmax(OBSTACLES_EIGHTH_THREE, num_nodes=2, memory_model=[1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,2,2,2,2,2,2,2,2,2,2,1])
 
 def run(env):
-    # try:
-        # memory_model = run_subfamily(env, timeout=60, subfamily_size=5, num_nodes=5, determine_memory_model=True, stratified=True)
-    # except Exception as e:
-        # print("SUBFAMILY EXPERIMENT FAILED FOR", env)
-        # print(e)
     try:
-        memory_model = determine_memory_model(env, 5)
-        # run_family_softmax(env, num_nodes=max(memory_model), memory_model=memory_model, dynamic_memory=False, seed=11)
-        run_family_experiment(env, max(memory_model), memory_model, max_iter=1000, timeout=600)
+        memory_model = run_subfamily(env, timeout=60, subfamily_size=5, num_nodes=5, determine_memory_model=True, stratified=True)
     except Exception as e:
-        print("FULL FAMILY GRADIENT DESCENT EXPERIMENT FAILED FOR", env)
+        print("SUBFAMILY EXPERIMENT FAILED FOR", env)
         print(e)
+    # try:
+    #     memory_model = determine_memory_model(env, 5)
+    #     # run_family_softmax(env, num_nodes=max(memory_model), memory_model=memory_model, dynamic_memory=False, seed=11)
+    #     run_family_experiment(env, max(memory_model), memory_model, max_iter=1000, timeout=600)
+    # except Exception as e:
+    #     print("FULL FAMILY GRADIENT DESCENT EXPERIMENT FAILED FOR", env)
+    #     print(e)
 
 with Pool(len(ENVS)) as p:
     p.map(run, ENVS)
