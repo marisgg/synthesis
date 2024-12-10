@@ -62,10 +62,10 @@ def run_family_experiment(project_path, num_nodes = 2, memory_model=None, timeou
     with open(f"{dr}/gd-experiment.pickle", 'wb') as handle:
         pickle.dump(results, handle)
 
-def determine_memory_model(project_path, num_nodes = 2, seed=11):
+def determine_memory_model(project_path, num_nodes = 2, seed=11, num_samples=5):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, seed=seed)
-    assignments = gd.stratified_subfamily_sampling(num_samples=5, seed=seed)
-    mem = gd.determine_memory_model_from_assignments(gd, assignments, max_num_nodes=num_nodes, seed=seed)
+    assignments = gd.stratified_subfamily_sampling(num_samples, seed=seed)
+    mem = gd.determine_memory_model_from_assignments(assignments, max_num_nodes=num_nodes)
     print(mem)
     return mem
 
