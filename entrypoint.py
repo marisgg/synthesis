@@ -131,109 +131,78 @@ def run_union(project_path, method):
     # assignments = [pomdp_sketch.family.pick_random() for _ in range(num_assignments)]
     # [print(a) for a in assignments]
     pomdps = []
-    # make sure that all POMDPs have the same action mapping so we can store only one copy
-    observation_action_to_true_action = None
+    pomdp_maps = []
     nodes = 2
     for assignment in assignments:
-        pomdp,obs_action_to_true_action = gd.assignment_to_pomdp(gd.pomdp_sketch,assignment,restore_absorbing_states=False)
+        pomdp,true_action_map = gd.assignment_to_pomdp(gd.pomdp_sketch,assignment,restore_absorbing_states=False)
         pomdps.append(pomdp)
-        if observation_action_to_true_action is None:
-            observation_action_to_true_action = obs_action_to_true_action
-            continue
-        # fill in labels for missing observations
-        for obs,true_action in enumerate(obs_action_to_true_action):
-            if true_action is None:
-                obs_action_to_true_action[obs] = observation_action_to_true_action[obs].copy()
-                # observation_action_to_true_action[obs] = obs_action_to_true_action[obs].copy()
-        assert observation_action_to_true_action == obs_action_to_true_action, "\n".join(['', str(observation_action_to_true_action), "=/=", str(obs_action_to_true_action)])
+        pomdp_maps.append(true_action_map)
 
+    # make sure that all POMDPs have the same action mapping so we can store only one copy
+    observation_action_to_true_action = []
+    for obs in range(gd.pomdp_sketch.num_observations):
+        obs_map = None
+        for pomdp_map in pomdp_maps:
+            obs_map_next = pomdp_map[obs]
+            if obs_map_next is None:
+                continue
+            if obs_map is None:
+                obs_map = obs_map_next
+                continue
+            assert obs_map == obs_map_next, "\n".join(['', str(obs_map), "=/=", str(obs_map_next)])
+        observation_action_to_true_action.append(obs_map)
+
+    # create and solve the union
     union_pomdp = payntbind.synthesis.createModelUnion(pomdps)
-    
     if method == Method.SAYNT:
-        fsc = gd.solve_pomdp_saynt(union_pomdp, gd.pomdp_sketch.specification, nodes, timeout=3)
-        nodes = fsc.num_nodes
-    
+        fsc = gd.solve_pomdp_saynt(union_pomdp, gd.pomdp_sketch.specification, nodes, timeout=5)
     elif method == Method.GRADIENT:
         value, resolution, action_function_params, memory_function_params, *_ = gd.gradient_descent_on_single_pomdp(union_pomdp, 150, nodes, timeout=10, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={})
         fsc = gd.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, nodes, gd.nO, gd.pomdp_sketch.observation_to_actions)
 
-   
+    print("OLD FSC:", [fsc.action_labels[act] if act is not None else None for act in fsc.action_function[0]])
+
+    # the last observation is the fresh one for the fresh initial state
+    # get the initial memory node set from this fres initial state
+    assert fsc.num_observations == gd.pomdp_sketch.num_observations+1
     initial_node = fsc.update_function[0][-1]
-    
-    print("\n\n\nOBSERVATION LABELS:", fsc.observation_labels, '\n\n\n')
-    
-    print([fsc.action_labels[act] for act in fsc.action_function[0]])
-    
-    new_fsc = copy.deepcopy(fsc)
-    # get rid of the fresh observation 
-    for n in range(nodes):
-        new_fsc.action_function[n] = fsc.action_function[n][:-1]
-        assert len(new_fsc.action_function[n]) == gd.nO
-        new_fsc.update_function[n] = fsc.update_function[n][:-1]
-        assert len(new_fsc.update_function[n]) == gd.nO
 
-    new_fsc.num_observations -= 1
-    
-    print("NODES: ", nodes)
-
-    # ensure that 0 is the initial node
-    fsc_update_fixed = list(range(nodes))
-    if initial_node != 0:
-        fsc_update_fixed[0] = initial_node
-        fsc_update_fixed[initial_node] = 0
-        tmp = copy.copy(fsc.action_function[0])
-        new_fsc.action_function[0] = copy.copy(fsc.action_function[initial_node])
-        new_fsc.action_function[initial_node] = tmp
-        tmp = copy.copy(fsc.update_function[0])
-        new_fsc.update_function[0] = copy.copy(fsc.update_function[initial_node])
-        new_fsc.update_function[initial_node] = tmp
-    for n in range(nodes):
-        for o in range(new_fsc.num_observations):
-            new_fsc.update_function[n][o] = fsc_update_fixed[new_fsc.update_function[n][o]]
-
-    # ensure that FSC uses the same ordering of action labels as the POMDP sketch (required by fsc.check())
-    for n in range(nodes):
-        for o in range(new_fsc.num_observations):
-            action_label = new_fsc.action_labels[new_fsc.action_function[n][o]]
-            # action_label = observation_action_to_true_action[o][action_label]
-            new_fsc.action_function[n][o] = gd.pomdp_sketch.action_labels.index(action_label)
-    
-    new_fsc.action_labels = gd.pomdp_sketch.action_labels.copy()
+    # get rid of the fresh observation
+    for node in range(fsc.num_nodes):
+        fsc.action_function[node] = fsc.action_function[node][:-1]
+        fsc.update_function[node] = fsc.update_function[node][:-1]
+    fsc.num_observations -= 1
 
     # fix possibly dummy actions
-    for n in range(nodes):
-        for o in range(new_fsc.num_observations):
-            fsc_action_label = new_fsc.action_labels[new_fsc.action_function[n][o]]
-            true_action_label = observation_action_to_true_action[o][fsc_action_label]
-            new_fsc.action_function[n][o] = gd.pomdp_sketch.action_labels.index(true_action_label)
-            assert gd.pomdp_sketch.action_labels.index(true_action_label) == new_fsc.action_labels.index(true_action_label)
-            new_fsc.action_function[n][o] = new_fsc.action_labels.index(true_action_label)
+    for node in range(fsc.num_nodes):
+        for obs in range(fsc.num_observations):
+            action = fsc.action_function[node][obs]
+            if action is None:
+                continue
+            action_label = fsc.action_labels[action]
+            true_action_label = observation_action_to_true_action[obs][action_label]
+            fsc.action_function[node][obs] = fsc.action_labels.index(true_action_label)
 
-    new_fsc.check(gd.pomdp_sketch.observation_to_actions)
-    # return
-    # TODO make FSC stochastic ?
-    
-    print("OLF FSC:", [fsc.action_labels[act] for act in fsc.action_function[0]])
-    print("NEW FSC:", [new_fsc.action_labels[act] for act in new_fsc.action_function[0]])
-    # exit()
-    
-    # print(new_fsc)
-    
-    import paynt.quotient.fsc
-    
-    # paynt.quotient.fsc.FSC()
-    
-    new_fsc = gd.deterministic_fsc_to_stochastic_fsc(new_fsc)
-    
-    # print(new_fsc)
-    
-    print([new_fsc.action_labels[next(iter(act.keys()))] for act in new_fsc.action_function[0]])
+    # fill actions for unreachable observations
+    for node in range(fsc.num_nodes):
+        for obs in range(fsc.num_observations):
+            if fsc.action_function[node][obs] is None:
+                available_action = gd.pomdp_sketch.observation_to_actions[obs][0]
+                available_action_label = gd.pomdp_sketch.action_labels[available_action]
+                fsc.action_function[node][obs] = fsc.action_labels.index(available_action_label)
 
-    print(gd.pomdp_sketch.observation_to_actions)
+    # make 0 the initial node and reorder the actions
+    node_order = list(range(fsc.num_nodes))
+    node_order[0] = initial_node; node_order[initial_node] = 0
+    fsc.reorder_nodes(node_order)
+    fsc.reorder_actions(gd.pomdp_sketch.action_labels)
+    fsc.check(gd.pomdp_sketch.observation_to_actions)
     
-    # print(gd.paynt_call_given_fsc(fsc))
-
-    print(gd.get_values_on_subfamily(gd.get_dtmc_sketch(new_fsc), assignments)) # TODO, returns unexpected values. FSC might be incorrectly morphed back to family?
+    print("NEW FSC:", [fsc.action_labels[act] for act in fsc.action_function[0]])
+    fsc.make_stochastic()
+    
+    print(gd.get_values_on_subfamily(gd.get_dtmc_sketch(fsc), assignments)) # TODO, returns unexpected values. FSC might be incorrectly morphed back to family?
+    exit()
     
 
 # run_family_softmax(AVOID, 4)
@@ -263,11 +232,10 @@ def run_union(project_path, method):
 # run_family_softmax(ROVER, num_nodes=3)
 # determine_memory_model(NETWORK)
 
-# UNION ASSERTIONERROR (ROVER):
-# run_union(ROVER, Method.SAYNT)
-
 # UNION ERROR UNEXPECTED VALUES (ANY BENCHMARK):
+# RA: fixed
 # run_union(OBSTACLES_TEN_TWO, Method.SAYNT)
+# run_union(ROVER, Method.SAYNT)
 
 # run_union(ROVER, Method.SAYNT)
 

@@ -207,8 +207,8 @@ class POMDPFamiliesSynthesis:
     def solve_pomdp_saynt(self, pomdp, specification, k, timeout=10):
         pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, specification)
         storm_control = paynt.quotient.storm_pomdp_control.StormPOMDPControl()
-        paynt_iter_timeout = 3
-        storm_iter_timeout = 3
+        paynt_iter_timeout = min(timeout//2,3)
+        storm_iter_timeout = min(timeout//2,3)
         iterative_storm = (timeout, paynt_iter_timeout, storm_iter_timeout)
         storm_control.set_options(
             storm_options="cutoff", get_storm_result=None, iterative_storm=iterative_storm, use_storm_cutoffs=False,
@@ -218,7 +218,7 @@ class POMDPFamiliesSynthesis:
                 pomdp_quotient, method="ar", fsc_synthesis=True, storm_control=storm_control
         )
         synthesizer.run(optimum_threshold=None)
-        # assert synthesizer.storm_control.latest_paynt_result_fsc is not None
+        assert synthesizer.storm_control.latest_paynt_result_fsc is not None
         fsc = synthesizer.storm_control.latest_paynt_result_fsc
         return fsc
 
