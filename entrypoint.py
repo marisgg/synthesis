@@ -150,12 +150,13 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
     observation_action_to_true_action = []
     for obs in range(gd.pomdp_sketch.num_observations):
         obs_map = None
-        for pomdp_map in pomdp_maps:
-            if obs not in pomdp_map:
-                obs_map_next = None
-            else:
-                obs_map_next = pomdp_map[obs]
+        for index,pomdp_map in enumerate(pomdp_maps):
+            if obs >= pomdps[index].nr_observations:
+                # (one of the) last observation is unreachable in this POMDP
+                continue
+            obs_map_next = pomdp_map[obs]
             if obs_map_next is None:
+                # middle observation is unreachable in this POMDP
                 continue
             if obs_map is None:
                 obs_map = obs_map_next
@@ -261,4 +262,3 @@ def run():
 def run_parallel():
     with Pool(min(len(ENVS), MAX_THREADS)) as p:
         p.map(run_env, ENVS)
-
