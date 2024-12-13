@@ -219,11 +219,10 @@ def run_union_all_parallel():
 
 def run_union_all():
     for env in ENVS:
-        if 'avoid' in env.lower(): continue
-        run_union(env, Method.SAYNT)
+        run_union(env)
 
 def run_env_heatmap(env):
-    timeout = 3600
+    timeout = 600
     subfamily_size = 5
     subfamily_timeout = timeout // subfamily_size
     max_num_nodes = 5
@@ -245,9 +244,14 @@ def run_env_lineplot(env):
         print("FULL FAMILY GRADIENT DESCENT EXPERIMENT FAILED FOR", env)
         print(e)
 
-def run_env_all():
-    run_env_heatmap()
-    run_env_lineplot()
+def run_env_all(env):
+    run_env_heatmap(env)
+    run_env_lineplot(env)
+    try: 
+        run_union(env, timeout=600)
+    except Exception as e:
+        print("UNION EXPERIMENT FAILED FOR", env)
+        print(e)
 
 def run():
     for env in ENVS:
