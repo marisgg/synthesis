@@ -1,4 +1,5 @@
 import copy
+import functools
 import os
 import random
 import stormpy
@@ -6,15 +7,17 @@ import payntbind
 from pomdp_families import POMDPFamiliesSynthesis
 from pomdp_families import Method
 
+import argparse
+
 from multiprocessing import Pool
 
 import pickle
 
+MAX_THREADS = 10
+
 BASE_OUTPUT_DIR = "./output-parallel-subfamily"
 
 BASE_SKETCH_DIR = 'models/pomdp/sketches'
-
-
 
 # WIP models, might get deleted:
 ACO = f"{BASE_SKETCH_DIR}/aco"
@@ -62,6 +65,8 @@ def run_family_experiment(project_path, num_nodes = 2, memory_model=None, timeou
         'gd_trace' : gd.gd_trace,
         'current_values' : gd.current_values
     }
+    
+    results['memory_model'] = memory_model
 
     with open(f"{dr}/gd-experiment.pickle", 'wb') as handle:
         pickle.dump(results, handle)
@@ -124,26 +129,32 @@ def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2
     
     return memory_model
 
-def run_union(project_path, method):
-    num_assignments = 10
+def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, nodes=2, stratified=True, seed=11):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=False, steps=10)
-    assignments = gd.create_random_subfamily(num_assignments)
-    # assignments = [pomdp_sketch.family.pick_random() for _ in range(num_assignments)]
-    # [print(a) for a in assignments]
+    if stratified:
+        assignments = gd.stratified_subfamily_sampling(5, seed=seed)
+    else:
+        assignments = gd.create_random_subfamily(num_assignments)
+
     pomdps = []
     pomdp_maps = []
-    nodes = 2
     for assignment in assignments:
         pomdp,true_action_map = gd.assignment_to_pomdp(gd.pomdp_sketch,assignment,restore_absorbing_states=False)
         pomdps.append(pomdp)
         pomdp_maps.append(true_action_map)
+        
+    dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/union/"
+    os.makedirs(dr, exist_ok=True)
 
     # make sure that all POMDPs have the same action mapping so we can store only one copy
     observation_action_to_true_action = []
     for obs in range(gd.pomdp_sketch.num_observations):
         obs_map = None
         for pomdp_map in pomdp_maps:
-            obs_map_next = pomdp_map[obs]
+            if obs not in pomdp_map:
+                obs_map_next = None
+            else:
+                obs_map_next = pomdp_map[obs]
             if obs_map_next is None:
                 continue
             if obs_map is None:
@@ -155,12 +166,10 @@ def run_union(project_path, method):
     # create and solve the union
     union_pomdp = payntbind.synthesis.createModelUnion(pomdps)
     if method == Method.SAYNT:
-        fsc = gd.solve_pomdp_saynt(union_pomdp, gd.pomdp_sketch.specification, nodes, timeout=5)
+        fsc = gd.solve_pomdp_saynt(union_pomdp, gd.pomdp_sketch.specification, nodes, timeout=timeout)
     elif method == Method.GRADIENT:
-        value, resolution, action_function_params, memory_function_params, *_ = gd.gradient_descent_on_single_pomdp(union_pomdp, 150, nodes, timeout=10, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={})
+        value, resolution, action_function_params, memory_function_params, *_ = gd.gradient_descent_on_single_pomdp(union_pomdp, 150, nodes, timeout=timeout, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={})
         fsc = gd.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, nodes, gd.nO, gd.pomdp_sketch.observation_to_actions)
-
-    print("OLD FSC:", [fsc.action_labels[act] if act is not None else None for act in fsc.action_function[0]])
 
     # the last observation is the fresh one for the fresh initial state
     # get the initial memory node set from this fres initial state
@@ -197,68 +206,59 @@ def run_union(project_path, method):
     fsc.reorder_nodes(node_order)
     fsc.reorder_actions(gd.pomdp_sketch.action_labels)
     fsc.check(gd.pomdp_sketch.observation_to_actions)
-    
-    print("NEW FSC:", [fsc.action_labels[act] for act in fsc.action_function[0]])
+
     fsc.make_stochastic()
-    
-    print(gd.get_values_on_subfamily(gd.get_dtmc_sketch(fsc), assignments)) # TODO, returns unexpected values. FSC might be incorrectly morphed back to family?
-    exit()
-    
 
-# run_family_softmax(AVOID, 4)
-# run_family_softmax(ACO)
-# run_family_softmax(AVOID, num_nodes=2, dynamic_memory=False)
-# run_family_softmax(OBSTACLES_TEN_TWO, num_nodes=2, memory_model=[1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1], seed=0)
-# run_subfamily(OBSTACLES_TEN_TWO, subfamily_size=5)
-# run_family_softmax(ROVER, num_nodes=3, memory_model=[random.randint(1,3) for _ in range(20)])
-# run_subfamily(ROVER, 5, 60, )
-# run_subfamily(OBSTACLES_TEN_TWO, num_nodes=4, memory_model=[1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4], baselines=[], timeout=20)
-# run_subfamily(OBSTACLES_TEN_TWO, num_nodes=2, memory_model=None, baselines=[], timeout=20)
-# run_family_softmax(OBSTACLES_TEN_TWO, 4, memory_model=[1, 1, 1, 1, 1, 1, 4, 1, 1, 1, 1, 1, 1, 4])
-# run_family_softmax(OBSTACLES_TEN_TWO, 4, memory_model=[4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4])
-# run_family_softmax(OBSTACLES_TEN_TWO, 4, memory_model=[2, 3, 2, 2, 2, 2, 4, 2, 2, 2, 2, 4, 4, 4])
-# run_family_softmax(OBSTACLES_TEN_TWO, 2, memory_model=[1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2])
-# run_family_softmax(OBSTACLES_TEN_TWO, 2, memory_model=[1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
-# run_family_softmax(OBSTACLES_TEN_TWO, 2)
-# run_family(OBSTACLES_TEN_TWO, 2)
-# run_family_softmax(OBSTACLES_TEN_TWO, 4)
-# run_family_experiment()
-# run_subfamily(ROVER, timeout=30)
-# for env, timeout in zip([DPM, AVOID, OBSTACLES_TEN_TWO, ROVER, NETWORK], [10, 60]):
-    # run_subfamily(env, timeout=timeout, subfamily_size=5)
-# run_subfamily(num_nodes=3, timeout=60)
+    dtmc_sketch = gd.get_dtmc_sketch(fsc)
 
-# SAYNT ERROR ACTIONS == [] (ROVER/NETWORK):
-# run_family_softmax(ROVER, num_nodes=3)
-# determine_memory_model(NETWORK)
+    assignment_values = gd.get_values_on_subfamily(dtmc_sketch, assignments)
 
-# UNION ERROR UNEXPECTED VALUES (ANY BENCHMARK):
-# RA: fixed
-# run_union(OBSTACLES_TEN_TWO, Method.SAYNT)
-# run_union(ROVER, Method.SAYNT)
+    _, family_value = gd.paynt_call(dtmc_sketch)
 
-# run_union(ROVER, Method.SAYNT)
+    results = {
+        'subfamily' : assignment_values,
+        'whole_family' : family_value,
+        'fsc' : fsc
+    }
 
-# run_family_softmax(OBSTACLES_EIGHTH_THREE, num_nodes=2, memory_model=[1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,2,2,2,2,2,2,2,2,2,2,1])
+    print(project_path.split('/')[-1], "Assignments:", assignment_values, 'family value:', family_value)
+    with open(f"{dr}/union.pickle", 'wb') as handle:
+        pickle.dump(results, handle)
 
-def run(env):
+def run_union_all_parallel():
+    with Pool(min(len(ENVS), MAX_THREADS)) as p:
+        p.map(run_union, ENVS)
+
+def run_union_all():
+    for env in ENVS:
+        if 'avoid' in env.lower(): continue
+        run_union(env, Method.SAYNT)
+
+def run_env(env):
+    timeout = 3600
+    subfamily_size = 5
+    subfamily_timeout = timeout // subfamily_size
+    max_num_nodes = 5
     memory_model = None
     try:
-        memory_model = run_subfamily(env, timeout=60, subfamily_size=5, num_nodes=5, determine_memory_model=True, stratified=True)
+        memory_model = run_subfamily(env, timeout=subfamily_timeout, subfamily_size=subfamily_size, num_nodes=max_num_nodes, determine_memory_model=True, stratified=True)
     except Exception as e:
         print("SUBFAMILY EXPERIMENT FAILED FOR", env)
         print(e)
     try:
         if memory_model is None:
-            memory_model = determine_memory_model_stratified(env, 5)
+            memory_model = determine_memory_model_stratified(env, num_nodes=max_num_nodes)
         # run_family_softmax(env, num_nodes=max(memory_model), memory_model=memory_model, dynamic_memory=False, seed=11)
         run_family_experiment(env, max(memory_model), memory_model, max_iter=1000, timeout=600)
     except Exception as e:
         print("FULL FAMILY GRADIENT DESCENT EXPERIMENT FAILED FOR", env)
         print(e)
 
-with Pool(len(ENVS)) as p:
-    p.map(run, ENVS)
+def run():
+    for env in ENVS:
+        run_env(env)
 
-# for env in ENVS:
-    # run(env)
+def run_parallel():
+    with Pool(min(len(ENVS), MAX_THREADS)) as p:
+        p.map(run_env, ENVS)
+
