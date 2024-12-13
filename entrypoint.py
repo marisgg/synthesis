@@ -11,42 +11,26 @@ import argparse
 
 from multiprocessing import Pool
 
+from config import *
+
 import pickle
 
-MAX_THREADS = 10
-
-BASE_OUTPUT_DIR = "./output-parallel-subfamily"
-
-BASE_SKETCH_DIR = 'models/pomdp/sketches'
-
-# WIP models, might get deleted:
-ACO = f"{BASE_SKETCH_DIR}/aco"
-INTERCEPT = f"{BASE_SKETCH_DIR}/intercept"
-
-# Can try various models.
-OBSTACLES_EIGHTH_THREE = f"{BASE_SKETCH_DIR}/obstacles-8-3"
-OBSTACLES_TEN_TWO = f"{BASE_SKETCH_DIR}/obstacles-10-2"
-AVOID = f"{BASE_SKETCH_DIR}/avoid"
-DPM = f"{BASE_SKETCH_DIR}/dpm"
-ROVER = f"{BASE_SKETCH_DIR}/rover"
-NETWORK = f"{BASE_SKETCH_DIR}/network"
-
-ENVS = [OBSTACLES_TEN_TWO, OBSTACLES_EIGHTH_THREE, DPM, AVOID, ROVER, NETWORK]
-
-def run_family_experiment(project_path, num_nodes = 2, memory_model=None, timeout=None, max_iter=1000):
+def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model=None, timeout=None, max_iter=1000):
 
     dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/"
     os.makedirs(dr, exist_ok=True)
-
-    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=False)
-    gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, memory_model=memory_model)
-
     results = {}
-    results['gd-no-momentum'] = {
-        'family_trace' : gd.family_trace,
-        'gd_trace' : gd.gd_trace,
-        'current_values' : gd.current_values
-    }
+    
+    # Don't need to necessarily run below:
+
+    # gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=False)
+    # gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, memory_model=memory_model)
+
+    # results['gd-no-momentum'] = {
+    #     'family_trace' : gd.family_trace,
+    #     'gd_trace' : gd.gd_trace,
+    #     'current_values' : gd.current_values
+    # }
 
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=True)
     gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, memory_model=memory_model, random_selection=True)
@@ -73,8 +57,10 @@ def run_family_experiment(project_path, num_nodes = 2, memory_model=None, timeou
 
 def determine_memory_model_stratified(project_path, num_nodes = 2, seed=11, num_samples=5):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, seed=seed)
-    assignments = gd.stratified_subfamily_sampling(num_samples, seed=seed)
-    mem = gd.determine_memory_model_from_assignments(assignments, max_num_nodes=num_nodes)
+    print(gd.pomdp_sketch.family.num_holes)
+    assignments, hole_combinations = gd.stratified_subfamily_sampling(num_samples, seed=seed)
+    mem = gd.determine_memory_model_from_assignments(assignments, hole_combinations, max_num_nodes=num_nodes)
+    # mem = gd.determine_memory_model_from_assignments_via_belief_exploration(assignments, max_num_nodes=num_nodes)
     print(mem)
     return mem
 
@@ -82,20 +68,20 @@ def run_family(project_path, num_nodes = 2, memory_model = None, dynamic_memory=
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=False, steps=10, dynamic_memory=dynamic_memory)
     gd.run_gradient_descent_on_family(1000, num_nodes, memory_model=memory_model)
 
-def run_family_softmax(project_path, num_nodes = 2, memory_model = None, dynamic_memory=False, seed=11):
+def run_family_softmax(project_path, num_nodes = 2, memory_model = None, dynamic_memory=False, seed=11, max_iters=1000):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, dynamic_memory=dynamic_memory, seed=seed)
-    gd.run_gradient_descent_on_family(1000, num_nodes, memory_model=memory_model)
+    gd.run_gradient_descent_on_family(max_iters, num_nodes, memory_model=memory_model)
 
-def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2, memory_model = None, baselines = [Method.GRADIENT, Method.SAYNT], seed=11, stratified=True, determine_memory_model=True):
+def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2, memory_model = None, baselines = [Method.GRADIENT, Method.SAYNT], seed=11, stratified=True, determine_memory_model=True):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, seed=seed)
 
     if stratified:
-        subfamily_assigments = gd.stratified_subfamily_sampling(subfamily_size, seed=seed)
+        subfamily_assigments, hole_combinations = gd.stratified_subfamily_sampling(subfamily_size, seed=seed)
     else:
-        subfamily_assigments = gd.create_random_subfamily(subfamily_size)
+        subfamily_assigments, hole_combinations = gd.create_random_subfamily(subfamily_size)
     
     if determine_memory_model:
-        memory_model = gd.determine_memory_model_from_assignments(subfamily_assigments,max_num_nodes=num_nodes)
+        memory_model = gd.determine_memory_model_from_assignments(subfamily_assigments, hole_combinations, max_num_nodes=num_nodes)
         num_nodes = max(memory_model)
 
     dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/{subfamily_size}/"
@@ -103,7 +89,7 @@ def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2
 
     for method in baselines:
 
-        subfamily_other_results = gd.experiment_on_subfamily(subfamily_assigments, num_nodes, method, memory_model=memory_model, num_iters=1000, timeout=timeout, evaluate_on_whole_family=True)
+        subfamily_other_results = gd.experiment_on_subfamily(subfamily_assigments, hole_combinations, num_nodes, method, memory_model=memory_model, num_iters=1000, timeout=timeout, evaluate_on_whole_family=True)
 
         with open(f"{dr}/{method.name.lower()}.pickle", 'wb') as handle:
             pickle.dump(subfamily_other_results, handle)
@@ -132,9 +118,9 @@ def run_subfamily(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2
 def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, nodes=2, stratified=True, seed=11):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=False, steps=10)
     if stratified:
-        assignments = gd.stratified_subfamily_sampling(5, seed=seed)
+        assignments, hole_combinations = gd.stratified_subfamily_sampling(5, seed=seed)
     else:
-        assignments = gd.create_random_subfamily(num_assignments)
+        assignments, hole_combinations = gd.create_random_subfamily(num_assignments)
 
     pomdps = []
     pomdp_maps = []
@@ -167,6 +153,7 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
     # create and solve the union
     union_pomdp = payntbind.synthesis.createModelUnion(pomdps)
     if method == Method.SAYNT:
+        # Don't need Saynt hotfix here, running on a single POMDP.
         fsc = gd.solve_pomdp_saynt(union_pomdp, gd.pomdp_sketch.specification, nodes, timeout=timeout)
     elif method == Method.GRADIENT:
         value, resolution, action_function_params, memory_function_params, *_ = gd.gradient_descent_on_single_pomdp(union_pomdp, 150, nodes, timeout=timeout, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={})
@@ -235,30 +222,37 @@ def run_union_all():
         if 'avoid' in env.lower(): continue
         run_union(env, Method.SAYNT)
 
-def run_env(env):
+def run_env_heatmap(env):
     timeout = 3600
     subfamily_size = 5
     subfamily_timeout = timeout // subfamily_size
     max_num_nodes = 5
     memory_model = None
     try:
-        memory_model = run_subfamily(env, timeout=subfamily_timeout, subfamily_size=subfamily_size, num_nodes=max_num_nodes, determine_memory_model=True, stratified=True)
+        _ = run_subfamily_for_heatmap(env, timeout=subfamily_timeout, subfamily_size=subfamily_size, num_nodes=max_num_nodes, determine_memory_model=True, stratified=True)
     except Exception as e:
         print("SUBFAMILY EXPERIMENT FAILED FOR", env)
         print(e)
+
+def run_env_lineplot(env):
+    max_num_nodes = 5
     try:
-        if memory_model is None:
-            memory_model = determine_memory_model_stratified(env, num_nodes=max_num_nodes)
+        memory_model = determine_memory_model_stratified(env, num_nodes=max_num_nodes)
         # run_family_softmax(env, num_nodes=max(memory_model), memory_model=memory_model, dynamic_memory=False, seed=11)
-        run_family_experiment(env, max(memory_model), memory_model, max_iter=1000, timeout=600)
+        run_family_experiment_for_lineplot(env, max(memory_model), memory_model, max_iter=1000, timeout=600)
+        # run_family_experiment(env, 5, memory_model=None, max_iter=1000, timeout=600)
     except Exception as e:
         print("FULL FAMILY GRADIENT DESCENT EXPERIMENT FAILED FOR", env)
         print(e)
 
+def run_env_all():
+    run_env_heatmap()
+    run_env_lineplot()
+
 def run():
     for env in ENVS:
-        run_env(env)
+        run_env_all(env)
 
 def run_parallel():
     with Pool(min(len(ENVS), MAX_THREADS)) as p:
-        p.map(run_env, ENVS)
+        p.map(run_env_all, ENVS)

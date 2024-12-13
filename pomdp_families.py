@@ -2,6 +2,7 @@
 import copy
 import math
 import operator
+import pickle
 import time
 from collections import defaultdict
 import paynt.cli
@@ -10,6 +11,8 @@ import paynt.quotient.pomdp_family
 import paynt.quotient.fsc
 import paynt.synthesizer.synthesizer_onebyone
 import paynt.synthesizer.synthesizer_ar
+
+from config import *
 
 import stormpy
 import stormpy.pomdp
@@ -57,6 +60,10 @@ class POMDPFamiliesSynthesis:
     def __init__(self, project_path : str, seed : int = 11, use_softmax : bool = False, learning_rate = 0.001, minibatch_size = 256, steps = 10, use_momentum = True, dynamic_memory = False):
         random.seed(seed)
         np.random.seed(seed)
+        
+        self.project_path = project_path
+        
+        os.makedirs('./cache/', exist_ok=True)
 
         self.gd_trace = []
         self.family_trace = []
@@ -203,12 +210,21 @@ class POMDPFamiliesSynthesis:
         fsc.update_function = [[d if d is not None else {m : 1/num_nodes for m in range(num_nodes)} for d in o_to_mem ] for o_to_mem in fsc.update_function]
 
         return fsc
+    
+    def solve_pomdp_saynt_hotfix(self, hole_assignment, timeout):
+        import subprocess
+        filename = f'/tmp/{time.time()}-temp-fsc.pickle'
+        result = subprocess.run(["python3", "saynt_call.py", str(tuple(hole_assignment)), str(timeout), self.project_path, filename], timeout=10*timeout)
+        assert result.returncode == 0, " ".join(result.args)
+        with open(filename, 'rb') as handle:
+            fsc = pickle.load(handle)
+        return fsc
 
-    def solve_pomdp_saynt(self, pomdp, specification, k, timeout=10):
+    def solve_pomdp_saynt(self, pomdp, specification, k=5, timeout=10):
         pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, specification)
         storm_control = paynt.quotient.storm_pomdp_control.StormPOMDPControl()
-        paynt_iter_timeout = min(timeout//2,3)
-        storm_iter_timeout = min(timeout//2,3)
+        paynt_iter_timeout = min(timeout // 1.5, 6)
+        storm_iter_timeout = min(timeout // 3, 3)
         iterative_storm = (timeout, paynt_iter_timeout, storm_iter_timeout)
         storm_control.set_options(
             storm_options="cutoff", get_storm_result=None, iterative_storm=iterative_storm, use_storm_cutoffs=False,
@@ -243,10 +259,11 @@ class POMDPFamiliesSynthesis:
     
     def create_random_subfamily(self, family_size : int):
         hole_combinations = random.sample(list(self.pomdp_sketch.family.all_combinations()), k = family_size)
-        return self.create_subfamily(hole_combinations)
+        return self.create_subfamily(hole_combinations), hole_combinations
 
     def stratified_subfamily_sampling(self, family_size : int, seed : int):
         options = [self.pomdp_sketch.family.hole_options(hole) for hole in range(self.pomdp_sketch.family.num_holes)]
+        # family_size = self.pomdp_sketch.family.num_holes # TODO
         lb = [min(xs) for xs in options]
         ub = [max(xs) + 1 for xs in options]
         sampler = qmc.LatinHypercube(d=len(options), seed=seed)
@@ -254,16 +271,20 @@ class POMDPFamiliesSynthesis:
         hole_combination_samples = qmc.scale(samples, lb, ub).astype(int).tolist()
         print(hole_combination_samples)
         assert len(set([tuple(x) for x in hole_combination_samples])) == len(hole_combination_samples)
-        return self.create_subfamily(hole_combination_samples)
+        return self.create_subfamily(hole_combination_samples), hole_combination_samples
 
-    def determine_memory_model_from_assignments(self, assignments : list, max_num_nodes = 5):
+    def determine_memory_model_from_assignments(self, assignments : list, hole_combinations : list, max_num_nodes = 5, timeout=15):
         print([str(a) for a in assignments])
         memory_models = []
         memory_model_matrix = np.zeros((len(assignments), self.nO), dtype=int)
-        for i, assignment in enumerate(assignments):
-            pomdp = self.pomdp_sketch.build_pomdp(assignment).model
-            spec = self.pomdp_sketch.specification.copy()
-            fsc : paynt.quotient.fsc.FSC = self.solve_pomdp_saynt(pomdp, spec, max_num_nodes, timeout=10)
+        for i, (assignment, hole_combination) in enumerate(zip(assignments, hole_combinations)):
+            if USE_SAYNT_HOTFIX:
+                fsc : paynt.quotient.fsc.FSC = self.solve_pomdp_saynt_hotfix(hole_combination, timeout=timeout)
+            else:
+                pomdp = self.pomdp_sketch.build_pomdp(assignment).model
+                spec = self.pomdp_sketch.specification.copy()
+                
+                fsc : paynt.quotient.fsc.FSC = self.solve_pomdp_saynt(pomdp, spec, max_num_nodes, timeout=timeout)
             if fsc is not None and fsc.memory_model is not None:
                 memory_models.append(fsc.memory_model)
                 memory_model_matrix[i, :len(fsc.memory_model)] = fsc.memory_model
@@ -297,7 +318,7 @@ class POMDPFamiliesSynthesis:
             memory_model[obs] = nodes
         return memory_model
 
-    def determine_memory_model_from_assignments_2(self, assignments : list, max_num_nodes = 5):
+    def determine_memory_model_from_assignments_via_belief_exploration(self, assignments : list, max_num_nodes = 5):
         print([str(a) for a in assignments])
         memory_models = []
         memory_model_matrix = np.zeros((len(assignments), self.nO), dtype=int)
@@ -331,7 +352,7 @@ class POMDPFamiliesSynthesis:
         fsc.is_deterministic = False
         return fsc
 
-    def experiment_on_subfamily(self, hole_assignments_to_test : list, num_nodes : int, method : Method, timeout=15, evaluate_on_whole_family=False, **gd_kwargs):
+    def experiment_on_subfamily(self, hole_assignments_to_test : list, hole_combinations : list, num_nodes : int, method : Method, timeout=15, evaluate_on_whole_family=False, **gd_kwargs):
         results = {}
 
         nO = self.pomdp_sketch.num_observations
@@ -356,7 +377,10 @@ class POMDPFamiliesSynthesis:
                 pomdp = pomdp.model
                 specification = self.pomdp_sketch.specification.copy()
                 if method.value == method.SAYNT.value:
-                    fsc = self.solve_pomdp_saynt(pomdp, specification, num_nodes, timeout=timeout)
+                    if USE_SAYNT_HOTFIX:
+                        fsc = self.solve_pomdp_saynt_hotfix(str(assignment), timeout=timeout)
+                    else:
+                        fsc = self.solve_pomdp_saynt(pomdp, specification, num_nodes, timeout=timeout)
                 else:
                     fsc = self.solve_pomdp_paynt(pomdp, specification, num_nodes, timeout=timeout)
 
@@ -791,7 +815,10 @@ class POMDPFamiliesSynthesis:
                     print("REUSING PREVIOUSLY COMPUTED MEMORY MODEL FOR", hole_assignment_str)
                 else:
                     print("COMPUTING MEMORY MODEL FOR", hole_assignment_str)
-                    saynt_controller : paynt.quotient.fsc.FSC = self.solve_pomdp_saynt(pomdp, self.pomdp_sketch.specification.copy(), num_nodes, timeout=10)
+                    if USE_SAYNT_HOTFIX:
+                        saynt_controller : paynt.quotient.fsc.FSC = self.solve_pomdp_saynt_hotfix(hole_assignment_str, timeout=10)
+                    else:
+                        saynt_controller : paynt.quotient.fsc.FSC = self.solve_pomdp_saynt(pomdp, self.pomdp_sketch.specification.copy(), num_nodes, timeout=10)
                     if saynt_controller is None or saynt_controller.memory_model is None:
                         suggest_memory_model = None
                     else:
