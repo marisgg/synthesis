@@ -214,8 +214,9 @@ class POMDPFamiliesSynthesis:
     def solve_pomdp_saynt_hotfix(self, hole_assignment, timeout):
         import subprocess
         filename = f'/tmp/{time.time()}-temp-fsc.pickle'
+        print(hole_assignment)
         result = subprocess.run(["python3", "saynt_call.py", str(tuple(hole_assignment)), str(timeout), self.project_path, filename], timeout=10*timeout)
-        assert result.returncode == 0, " ".join(result.args)
+        assert result.returncode == 0, f"returncode={result.returncode}, args=" + " ".join(result.args)
         with open(filename, 'rb') as handle:
             fsc = pickle.load(handle)
         return fsc
@@ -223,8 +224,8 @@ class POMDPFamiliesSynthesis:
     def solve_pomdp_saynt(self, pomdp, specification, k=5, timeout=10):
         pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, specification)
         storm_control = paynt.quotient.storm_pomdp_control.StormPOMDPControl()
-        paynt_iter_timeout = min(timeout // 1.5, 6)
-        storm_iter_timeout = min(timeout // 3, 3)
+        paynt_iter_timeout = min(timeout // 2, 9)
+        storm_iter_timeout = min(timeout // 6, 3)
         iterative_storm = (timeout, paynt_iter_timeout, storm_iter_timeout)
         storm_control.set_options(
             storm_options="cutoff", get_storm_result=None, iterative_storm=iterative_storm, use_storm_cutoffs=False,
@@ -342,8 +343,11 @@ class POMDPFamiliesSynthesis:
                     fsc.update_function[n].append({int(m) : 1 / fsc.num_nodes for m in range(fsc.num_nodes)})
                 else:
                     a = fsc.action_function[n][o]
-                    action_label = fsc.action_labels[a]
-                    family_action = self.pomdp_sketch.action_labels.index(action_label)
+                    if a is None:
+                        family_action = self.pomdp_sketch.observation_to_actions[o][0]
+                    else:
+                        action_label = fsc.action_labels[a]
+                        family_action = self.pomdp_sketch.action_labels.index(action_label)
                     assert family_action in self.pomdp_sketch.observation_to_actions[o]
                     fsc.action_function[n][o] = {int(family_action) : 1.0}
                     fsc.update_function[n][o] = {int(fsc.update_function[n][o]) : 1.0}
@@ -376,9 +380,10 @@ class POMDPFamiliesSynthesis:
                     assert pomdp.model.observations[state] == self.pomdp_sketch.state_to_observation[quotient_state]
                 pomdp = pomdp.model
                 specification = self.pomdp_sketch.specification.copy()
+                hole_options = tuple([assignment.hole_options(hole)[0] for hole in range(assignment.num_holes)])
                 if method.value == method.SAYNT.value:
                     if USE_SAYNT_HOTFIX:
-                        fsc = self.solve_pomdp_saynt_hotfix(str(assignment), timeout=timeout)
+                        fsc = self.solve_pomdp_saynt_hotfix(hole_options, timeout=timeout)
                     else:
                         fsc = self.solve_pomdp_saynt(pomdp, specification, num_nodes, timeout=timeout)
                 else:
@@ -793,7 +798,7 @@ class POMDPFamiliesSynthesis:
             if i > 0:
                 fsc = self.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, self.nO, self.pomdp_sketch.observation_to_actions, memory_model=memory_model)
                 dtmc_sketch =  self.pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
-                hole_assignment, paynt_value = self.paynt_call(dtmc_sketch, assignments=assignments, artificial_upper_bound=artificial_upper_bound, random_selection=random_selection)
+                assignment, paynt_value = self.paynt_call(dtmc_sketch, assignments=assignments, artificial_upper_bound=artificial_upper_bound, random_selection=random_selection)
                 print("Paynt value:", paynt_value, "previous family best:", best_family_value)
                 self.family_trace.append(paynt_value)
                 if op(paynt_value, best_family_value):
@@ -801,29 +806,30 @@ class POMDPFamiliesSynthesis:
                     best_family_value = paynt_value
                 if timeout and time.time() - tik > timeout: break
             else:
-                hole_assignment = self.pomdp_sketch.family.pick_any()
+                assignment = self.pomdp_sketch.family.pick_any()
             
-            pomdp_class = self.pomdp_sketch.build_pomdp(hole_assignment)
+            pomdp_class = self.pomdp_sketch.build_pomdp(assignment)
             pomdp = pomdp_class.model
             
             if self.dynamic_memory and i % 2 == 0:
                 
-                hole_assignment_str = str(hole_assignment)
+                # hole_assignment_str = str(assignment)
+                hole_options = tuple([assignment.hole_options(hole)[0] for hole in range(assignment.num_holes)])
                 
                 if hole_assignment_str in memory_model_cache:
-                    suggest_memory_model = memory_model_cache[hole_assignment_str]
-                    print("REUSING PREVIOUSLY COMPUTED MEMORY MODEL FOR", hole_assignment_str)
+                    suggest_memory_model = memory_model_cache[hole_options]
+                    print("REUSING PREVIOUSLY COMPUTED MEMORY MODEL FOR", hole_options)
                 else:
-                    print("COMPUTING MEMORY MODEL FOR", hole_assignment_str)
+                    print("COMPUTING MEMORY MODEL FOR", hole_options)
                     if USE_SAYNT_HOTFIX:
-                        saynt_controller : paynt.quotient.fsc.FSC = self.solve_pomdp_saynt_hotfix(hole_assignment_str, timeout=10)
+                        saynt_controller : paynt.quotient.fsc.FSC = self.solve_pomdp_saynt_hotfix(hole_options, timeout=10)
                     else:
                         saynt_controller : paynt.quotient.fsc.FSC = self.solve_pomdp_saynt(pomdp, self.pomdp_sketch.specification.copy(), num_nodes, timeout=10)
                     if saynt_controller is None or saynt_controller.memory_model is None:
                         suggest_memory_model = None
                     else:
                         suggest_memory_model = saynt_controller.memory_model
-                    memory_model_cache[hole_assignment_str] = suggest_memory_model
+                    memory_model_cache[hole_options] = suggest_memory_model
                 
                 if suggest_memory_model is not None:
                     # suggested_increase = np.array(suggest_memory_model) > np.array(memory_model[:len(suggest_memory_model)])

@@ -57,7 +57,6 @@ def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model
 
 def determine_memory_model_stratified(project_path, num_nodes = 2, seed=11, num_samples=5):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, seed=seed)
-    print(gd.pomdp_sketch.family.num_holes)
     assignments, hole_combinations = gd.stratified_subfamily_sampling(num_samples, seed=seed)
     mem = gd.determine_memory_model_from_assignments(assignments, hole_combinations, max_num_nodes=num_nodes)
     # mem = gd.determine_memory_model_from_assignments_via_belief_exploration(assignments, max_num_nodes=num_nodes)
@@ -74,7 +73,7 @@ def run_family_softmax(project_path, num_nodes = 2, memory_model = None, dynamic
 
 def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2, memory_model = None, baselines = [Method.GRADIENT, Method.SAYNT], seed=11, stratified=True, determine_memory_model=True):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, seed=seed)
-
+    subfamily_size = min(subfamily_size, gd.pomdp_sketch.family.size)
     if stratified:
         subfamily_assigments, hole_combinations = gd.stratified_subfamily_sampling(subfamily_size, seed=seed)
     else:
@@ -213,45 +212,48 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
     with open(f"{dr}/union.pickle", 'wb') as handle:
         pickle.dump(results, handle)
 
-def run_union_all_parallel():
-    with Pool(min(len(ENVS), MAX_THREADS)) as p:
-        p.map(run_union, ENVS)
-
-def run_union_all():
-    for env in ENVS:
-        run_union(env)
-
-def run_env_heatmap(env):
-    timeout = 600
+def run_env_heatmap(env, timeout=600):
     subfamily_size = 5
     subfamily_timeout = timeout // subfamily_size
     max_num_nodes = 5
     memory_model = None
     try:
-        _ = run_subfamily_for_heatmap(env, timeout=subfamily_timeout, subfamily_size=subfamily_size, num_nodes=max_num_nodes, determine_memory_model=True, stratified=True)
+        run_subfamily_for_heatmap(env, timeout=subfamily_timeout, subfamily_size=subfamily_size, num_nodes=max_num_nodes, determine_memory_model=True, stratified=True)
     except Exception as e:
         print("SUBFAMILY EXPERIMENT FAILED FOR", env)
         print(e)
+        print(traceback.format_exc())
 
-def run_env_lineplot(env):
+import traceback
+
+def run_env_lineplot(env, timeout=600):
     max_num_nodes = 5
     try:
-        memory_model = determine_memory_model_stratified(env, num_nodes=max_num_nodes)
+        memory_model = determine_memory_model_stratified(env, num_nodes=max_num_nodes, num_samples=4)
         # run_family_softmax(env, num_nodes=max(memory_model), memory_model=memory_model, dynamic_memory=False, seed=11)
-        run_family_experiment_for_lineplot(env, max(memory_model), memory_model, max_iter=1000, timeout=600)
-        # run_family_experiment(env, 5, memory_model=None, max_iter=1000, timeout=600)
+        run_family_experiment_for_lineplot(env, max(memory_model), memory_model, max_iter=1000, timeout=timeout)
+        # run_family_experiment(env, 5, memory_model=None, max_iter=1000, timeout=timeout)
     except Exception as e:
         print("FULL FAMILY GRADIENT DESCENT EXPERIMENT FAILED FOR", env)
         print(e)
+        print(traceback.format_exc())
 
-def run_env_all(env):
-    run_env_heatmap(env)
-    run_env_lineplot(env)
-    try: 
-        run_union(env, timeout=600)
+def run_env_all(env, timeout=600):
+    run_env_lineplot(env, timeout)
+    run_env_heatmap(env, timeout)
+    try:
+        run_union(env, timeout=timeout)
     except Exception as e:
         print("UNION EXPERIMENT FAILED FOR", env)
         print(e)
+
+def run_union_all():
+    for env in ENVS:
+        run_union(env)
+
+def run_union_all_parallel():
+    with Pool(min(len(ENVS), MAX_THREADS)) as p:
+        p.map(run_union, ENVS)
 
 def run():
     for env in ENVS:
@@ -260,3 +262,6 @@ def run():
 def run_parallel():
     with Pool(min(len(ENVS), MAX_THREADS)) as p:
         p.map(run_env_all, ENVS)
+
+# run()
+# run_env_all(ILLUSTRATIVE, timeout=10)
