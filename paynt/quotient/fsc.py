@@ -84,6 +84,18 @@ class FSC:
                     self.action_function[node][obs] = action_function
         self.action_labels = action_labels.copy()
 
+    def force_deterministic_via_maxprob(self):
+        """
+        Careful: forces a stochastic FSC to a deterministic (maximum likelihood) FSC
+        """
+        if self.is_deterministic:
+            return
+        for node in range(self.num_nodes):
+            for obs in range(self.num_observations):
+                self.action_function[node][obs] = max(self.action_function[node][obs], key=self.action_function[node][obs].get)
+                self.update_function[node][obs] = max(self.update_function[node][obs], key=self.update_function[node][obs].get)
+        self.is_deterministic = True
+
     def make_stochastic(self):
         if not self.is_deterministic:
             return
