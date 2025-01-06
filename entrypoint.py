@@ -6,6 +6,7 @@ import stormpy
 import payntbind
 from pomdp_families import POMDPFamiliesSynthesis
 from pomdp_families import Method
+import paynt.quotient.fsc
 
 import argparse
 
@@ -15,40 +16,39 @@ from config import *
 
 import pickle
 
-def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model=None, timeout=None, max_iter=1000):
+def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model=None, timeout=None, max_iter=1000, seed=11):
 
     dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/"
     os.makedirs(dr, exist_ok=True)
     results = {}
+    
+    def store_results(gd : POMDPFamiliesSynthesis, seed : int, fsc : paynt.quotient.fsc.FSC, value : float):
+        return {
+            'family_trace' : gd.family_trace,
+            'gd_trace' : gd.gd_trace,
+            'current_values' : gd.current_values,
+            'plot_times' : gd.plot_times,
+            'seed' : seed,
+            'best_worst_value' : value,
+            'fsc' : fsc
+        }
     
     # Don't need to necessarily run below:
 
     # gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=False)
     # gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, memory_model=memory_model)
 
-    # results['gd-no-momentum'] = {
-    #     'family_trace' : gd.family_trace,
-    #     'gd_trace' : gd.gd_trace,
-    #     'current_values' : gd.current_values
-    # }
+    # results['gd-no-momentum'] = store_results(gd, seed)
 
-    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=True)
-    gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, memory_model=memory_model, random_selection=True)
+    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=True, seed=seed)
+    fsc, value = gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, memory_model=memory_model, random_selection=True)
     
-    results['gd-random'] = {
-        'family_trace' : gd.family_trace,
-        'gd_trace' : gd.gd_trace,
-        'current_values' : gd.current_values
-    }
+    results['gd-random'] = store_results(gd, seed, fsc, value)
 
-    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=True)
-    gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, memory_model=memory_model)
+    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=True, seed=seed)
+    fsc, value = gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, memory_model=memory_model)
 
-    results['gd-normal'] = {
-        'family_trace' : gd.family_trace,
-        'gd_trace' : gd.gd_trace,
-        'current_values' : gd.current_values
-    }
+    results['gd-normal'] = store_results(gd, seed)
     
     results['memory_model'] = memory_model
 
@@ -81,7 +81,7 @@ def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, n
     
     if determine_memory_model:
         memory_model = gd.determine_memory_model_from_assignments(subfamily_assigments, hole_combinations, max_num_nodes=num_nodes)
-        num_nodes = max(memory_model)
+        num_nodes = int(max(memory_model))
 
     dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/{subfamily_size}/"
     os.makedirs(dr, exist_ok=True)
@@ -105,7 +105,8 @@ def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, n
     our_results = {
         'ours' : our_evaluations,
         'whole_family' : family_value,
-        'fsc' : best_gd_fsc
+        'fsc' : best_gd_fsc,
+        'seed' : seed
     }
 
     print("OURS:", our_evaluations, 'family value:', family_value)
@@ -205,7 +206,8 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
     results = {
         'subfamily' : assignment_values,
         'whole_family' : family_value,
-        'fsc' : fsc
+        'fsc' : fsc,
+        'seed' : seed
     }
 
     print(project_path.split('/')[-1], "Assignments:", assignment_values, 'family value:', family_value)
@@ -265,3 +267,4 @@ def run_parallel():
 
 # run()
 # run_env_all(ILLUSTRATIVE, timeout=10)
+# run_env_heatmap(ILLUSTRATIVE_TWO, timeout=10)

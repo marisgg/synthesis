@@ -67,6 +67,7 @@ class POMDPFamiliesSynthesis:
 
         self.gd_trace = []
         self.family_trace = []
+        self.plot_times = []
         
         self.dynamic_memory = dynamic_memory
         
@@ -295,7 +296,7 @@ class POMDPFamiliesSynthesis:
         pointwise_max_memory_model = memory_model_matrix.max(axis=0)
         print(pointwise_max_memory_model)
         
-        return np.minimum(pointwise_max_memory_model, max_num_nodes)
+        return np.minimum(pointwise_max_memory_model, max_num_nodes).tolist()
     
     def memory_model_from_belief_exploration(self, assignment):
         pomdp = self.pomdp_sketch.build_pomdp(assignment).model
@@ -789,21 +790,26 @@ class POMDPFamiliesSynthesis:
         
         parameter_resolution = {} if self.use_softmax else None
         
-        if timeout: tik = time.time()
+        if timeout: 
+            tik = time.time()
         
         for i in range(num_iters):
             
             artificial_upper_bound = None # if current_value is None else current_value * (0.9 if self.minimizing else 1.1)
             
             if i > 0:
+                paynt_tik = time.time()
                 fsc = self.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, self.nO, self.pomdp_sketch.observation_to_actions, memory_model=memory_model)
                 dtmc_sketch =  self.pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
                 assignment, paynt_value = self.paynt_call(dtmc_sketch, assignments=assignments, artificial_upper_bound=artificial_upper_bound, random_selection=random_selection)
-                print("Paynt value:", paynt_value, "previous family best:", best_family_value)
+                paynt_tok = time.time() - paynt_tik
+                print("Paynt value:", paynt_value, "previous family best:", best_family_value, 'paynt duration:', paynt_tok)
                 self.family_trace.append(paynt_value)
                 if op(paynt_value, best_family_value):
                     best_fsc = fsc
                     best_family_value = paynt_value
+                if timeout and random_selection: # Do not take into account the Paynt worst-case evaluation time for random selection baseline.
+                    timeout += paynt_tok
                 if timeout and time.time() - tik > timeout: break
             else:
                 assignment = self.pomdp_sketch.family.pick_any()
@@ -813,7 +819,7 @@ class POMDPFamiliesSynthesis:
             
             if self.dynamic_memory and i % 2 == 0:
                 
-                # hole_assignment_str = str(assignment)
+                hole_assignment_str = str(assignment)
                 hole_options = tuple([assignment.hole_options(hole)[0] for hole in range(assignment.num_holes)])
                 
                 if hole_assignment_str in memory_model_cache:
@@ -848,27 +854,30 @@ class POMDPFamiliesSynthesis:
             
             self.current_values.append(current_value)
             
+            if timeout:
+                self.plot_times.append(time.time() - tik)
+            
             print(f"{i} | Latest GD value: {current_value}")
 
             resolution.update(new_resolution)
             if self.use_softmax:
                 parameter_resolution.update(new_parameter_resolution)
-        
+
         return best_fsc, best_family_value
-    
+
     def get_values_on_subfamily(self, dtmc_sketch, assignments) -> np.ndarray:
         synthesizer = paynt.synthesizer.synthesizer_onebyone.SynthesizerOneByOne(dtmc_sketch)
         evaluations = np.zeros(len(assignments))
         for j, family in enumerate(assignments):
             evaluations[j] = synthesizer.evaluate(family, keep_value_only=True)[0]
         return evaluations
-    
+
     def get_dtmc_sketch(self, fsc):
         return self.pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
-    
+
     def paynt_call_given_fsc(self, fsc, **kwargs) -> tuple[paynt.family.family.Family, float]:
         return self.paynt_call(self.get_dtmc_sketch(fsc), **kwargs)
-    
+
     def paynt_call(self, dtmc_sketch, assignments = None, artificial_upper_bound = None, random_selection = False) -> tuple[paynt.family.family.Family, float]:
         if assignments is None:
             synthesizer = paynt.synthesizer.synthesizer_ar.SynthesizerAR(dtmc_sketch)
@@ -887,7 +896,7 @@ class POMDPFamiliesSynthesis:
                 hole_assignment = assignments[hole_assignment_idx]
         
         return hole_assignment, paynt_value
-    
+
     def sanity_check_pmc_at_instantiation(self, pmc : stormpy.storage.SparseParametricDtmc, resolution : dict[pycarl.Variable, pc.Rational]):
         # if not self.use_softmax:
         if True:
