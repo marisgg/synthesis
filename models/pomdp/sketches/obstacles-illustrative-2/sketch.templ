@@ -1,0 +1,54 @@
+pomdp
+
+const int N = 4;
+const int gMIN = 1;
+const int gMAX = N;
+
+hole int ox_init in {2..2};
+hole int oy_init in {1..4};
+
+observable "placed" = placed;
+observable "goal" = goal;
+observable "at" = at;
+observable "near" = near;
+
+formula goal = (x=gMAX & y=gMAX);
+formula at = (x = ox & y = oy);
+formula dx = max(x-ox,ox-x);
+formula dy = max(y-oy,oy-y);
+formula near = dx<=1 & dy<=1;
+
+const double slip = 0.1;
+
+module obstacle1
+    placed: bool init false;
+    ox : [gMIN..gMAX];
+    oy : [gMIN..gMAX];
+
+    [place] !placed -> (ox'=ox_init) & (oy'=oy_init) & (placed'=true);
+    [up] placed -> true;
+    [do] placed -> true;
+    [le] placed -> true;
+    [ri] placed -> true;
+endmodule
+
+module agent
+    x : [gMIN..gMAX] init gMIN;
+    y : [gMIN..gMAX] init gMIN;
+
+    [up] true -> 1-slip : (y'=min(y+1,gMAX)) + slip : (y'=min(y+2,gMAX));
+    [do] true -> 1-slip : (y'=max(y-1,gMIN)) + slip : (y'=max(y-2,gMIN));
+    [le] true -> 1-slip : (x'=max(x-1,gMIN)) + slip : (x'=max(x-2,gMIN));
+    [ri] true -> 1-slip : (x'=min(x+1,gMAX)) + slip : (x'=min(x+2,gMAX));
+endmodule
+
+formula step_penalty = 1;
+formula crash_penalty = 100;
+formula penalty = step_penalty + (at?crash_penalty:0);
+
+rewards "penalty"
+    [up] true : penalty;
+    [do] true : penalty;
+    [le] true : penalty;
+    [ri] true : penalty;
+endrewards
