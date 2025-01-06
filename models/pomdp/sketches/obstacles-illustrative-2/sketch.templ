@@ -36,10 +36,10 @@ module agent
     x : [gMIN..gMAX] init gMIN;
     y : [gMIN..gMAX] init gMIN;
 
-    [up] true -> 1-slip : (y'=min(y+1,gMAX)) + slip : (y'=min(y+2,gMAX));
-    [do] true -> 1-slip : (y'=max(y-1,gMIN)) + slip : (y'=max(y-2,gMIN));
-    [le] true -> 1-slip : (x'=max(x-1,gMIN)) + slip : (x'=max(x-2,gMIN));
-    [ri] true -> 1-slip : (x'=min(x+1,gMAX)) + slip : (x'=min(x+2,gMAX));
+    [up] true -> 1-slip : (y'=min(y+1,gMAX)) + slip : true;
+    [do] true -> 1-slip : (y'=max(y-1,gMIN)) + slip : true;
+    [le] true -> 1-slip : (x'=max(x-1,gMIN)) + slip : true;
+    [ri] true -> 1-slip : (x'=min(x+1,gMAX)) + slip : true;
 endmodule
 
 formula step_penalty = 1;
