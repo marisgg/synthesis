@@ -218,10 +218,10 @@ class POMDPFamiliesSynthesis:
     
     def solve_pomdp_saynt_hotfix(self, hole_assignment, timeout):
         import subprocess
-        filename = f'/tmp/{self.project_path}-{time.time()}-temp-fsc.pickle'
+        filename = f'/tmp/{self.project_path.replace("/",'-')}-{time.time()}-temp-fsc.pickle'
         print(hole_assignment)
         result = subprocess.run(["python3", "saynt_call.py", str(tuple(hole_assignment)), str(timeout), self.project_path, filename], timeout=10*timeout)
-        assert result.returncode == 0, f"returncode={result.returncode}, args=" + " ".join(result.args)
+        assert result.returncode == 0, f"returncode={result.returncode}, args=" + " ".join(result.args) + f"\n\n{result.stderr}"
         with open(filename, 'rb') as handle:
             fsc = pickle.load(handle)
         return fsc
