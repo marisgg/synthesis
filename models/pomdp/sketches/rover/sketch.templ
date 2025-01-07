@@ -74,9 +74,9 @@ hole int reward_medium in {10..19:3};
 hole int reward_high in {20..40:10};
 
 rewards "value"
-	[task_done] low_value_task: reward_low;
-	[task_done] medium_value_task: reward_medium;
-	[task_done] high_value_task: reward_high;
+	[task_done] success & low_value_task: reward_low;
+	[task_done] success & medium_value_task: reward_medium;
+	[task_done] success & high_value_task: reward_high;
 endrewards
 
 observable "increased_energy" = increased_energy;
