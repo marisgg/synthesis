@@ -27,9 +27,9 @@ endmodule
 
 // energy
 
-hole double energy_low in {0.98..0.99:0.01};
-hole double energy_medium in {0.91..0.95:0.01};
-hole double energy_high in {0.80..0.90:0.02}; 
+hole double energy_low in {0.95..0.99:0.01};
+hole double energy_medium in {0.90..0.94:0.01};
+hole double energy_high in {0.80..0.89:0.01};
 
 module energy
 	increased_energy : bool init false;
@@ -69,9 +69,9 @@ formula low_value_task = (task=3);
 formula medium_value_task = (task=1 | task=2);
 formula high_value_task = (task=4);
 
-hole int reward_low in {2..8:2};
-hole int reward_medium in {10..19:3};
-hole int reward_high in {20..40:10};
+hole int reward_low in {1..9:1};
+hole int reward_medium in {10..19:1};
+hole int reward_high in {20..40:2};
 
 rewards "value"
 	[task_done] success & low_value_task: reward_low;
