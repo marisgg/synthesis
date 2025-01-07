@@ -270,6 +270,4 @@ def run_parallel():
     with Pool(min(len(ENVS), MAX_THREADS)) as p:
         p.map(run_env_all, ENVS)
 
-# run_parallel()
-run_env_all(OBSTACLES_TEN_TWO)
-# run_union(OBSTACLES_TEN_TWO, timeout=3600, num_assignments=10, stratified=True, seed=11)
+run_parallel()
