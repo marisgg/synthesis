@@ -221,7 +221,7 @@ class POMDPFamiliesSynthesis:
         filename = f'/tmp/{self.project_path.replace("/",'-')}-{time.time()}-temp-fsc.pickle'
         print(hole_assignment)
         result = subprocess.run(["python3", "saynt_call.py", str(tuple(hole_assignment)), str(timeout), self.project_path, filename], timeout=10*timeout)
-        assert result.returncode == 0, f"returncode={result.returncode}, args=" + " ".join(result.args) + f"\n\n{result.stderr}"
+        assert result.returncode == 0, f"returncode={result.returncode}, args=" + " ".join(result.args) + f"\n\n{result.stderr}" + f"\n\n{result.stdout}"
         with open(filename, 'rb') as handle:
             fsc = pickle.load(handle)
         return fsc
