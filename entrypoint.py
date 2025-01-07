@@ -8,7 +8,7 @@ from pomdp_families import POMDPFamiliesSynthesis
 from pomdp_families import Method
 import paynt.quotient.fsc
 
-import argparse
+import traceback
 
 from multiprocessing import Pool
 
@@ -67,9 +67,9 @@ def run_family(project_path, num_nodes = 2, memory_model = None, dynamic_memory=
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=False, steps=10, dynamic_memory=dynamic_memory)
     gd.run_gradient_descent_on_family(1000, num_nodes, memory_model=memory_model)
 
-def run_family_softmax(project_path, num_nodes = 2, memory_model = None, dynamic_memory=False, seed=11, max_iters=1000):
+def run_family_softmax(project_path, num_nodes = 2, memory_model = None, dynamic_memory=False, seed=11, max_iters=1000, **kwargs):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, dynamic_memory=dynamic_memory, seed=seed)
-    gd.run_gradient_descent_on_family(max_iters, num_nodes, memory_model=memory_model)
+    gd.run_gradient_descent_on_family(max_iters, num_nodes, memory_model=memory_model, **kwargs)
 
 def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2, memory_model = None, baselines = [Method.GRADIENT, Method.SAYNT], seed=11, stratified=True, determine_memory_model=True):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, seed=seed)
@@ -78,6 +78,11 @@ def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, n
         subfamily_assigments, hole_combinations = gd.stratified_subfamily_sampling(subfamily_size, seed=seed)
     else:
         subfamily_assigments, hole_combinations = gd.create_random_subfamily(subfamily_size)
+    
+    if timeout:
+        num_iters = int(1e30)
+    else:
+        num_iters = 1000
     
     if determine_memory_model:
         memory_model = gd.determine_memory_model_from_assignments(subfamily_assigments, hole_combinations, max_num_nodes=num_nodes)
@@ -88,12 +93,12 @@ def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, n
 
     for method in baselines:
 
-        subfamily_other_results = gd.experiment_on_subfamily(subfamily_assigments, hole_combinations, num_nodes, method, memory_model=memory_model, num_iters=1000, timeout=timeout, evaluate_on_whole_family=True)
+        subfamily_other_results = gd.experiment_on_subfamily(subfamily_assigments, hole_combinations, num_nodes, method, memory_model=memory_model, num_iters=num_iters, timeout=timeout, evaluate_on_whole_family=True)
 
         with open(f"{dr}/{method.name.lower()}.pickle", 'wb') as handle:
             pickle.dump(subfamily_other_results, handle)
 
-    best_gd_fsc, subfamily_gd_best_value = gd.run_gradient_descent_on_family(1000, num_nodes, subfamily_assigments, timeout=subfamily_size*timeout, memory_model=memory_model)
+    best_gd_fsc, subfamily_gd_best_value = gd.run_gradient_descent_on_family(num_iters, num_nodes, subfamily_assigments, timeout=subfamily_size*timeout, memory_model=memory_model)
     print(subfamily_gd_best_value)
 
     dtmc_sketch = gd.get_dtmc_sketch(best_gd_fsc)
@@ -106,28 +111,33 @@ def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, n
         'ours' : our_evaluations,
         'whole_family' : family_value,
         'fsc' : best_gd_fsc,
-        'seed' : seed
+        'seed' : seed,
+        'hole_combinations' : hole_combinations
     }
 
     print("OURS:", our_evaluations, 'family value:', family_value)
-    with open(f"{dr}/ours-sparse.pickle", 'wb') as handle:
+    with open(f"{dr}/ours.pickle", 'wb') as handle:
         pickle.dump(our_results, handle)
     
     return memory_model
 
 def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, nodes=2, stratified=True, seed=11):
-    gd = POMDPFamiliesSynthesis(project_path, use_softmax=False, steps=10)
+    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, learning_rate=0.1, steps=1, union=True)
+
     if stratified:
-        assignments, hole_combinations = gd.stratified_subfamily_sampling(5, seed=seed)
+        assignments, hole_combinations = gd.stratified_subfamily_sampling(num_assignments, seed=seed)
     else:
         assignments, hole_combinations = gd.create_random_subfamily(num_assignments)
 
     pomdps = []
     pomdp_maps = []
     for assignment in assignments:
-        pomdp,true_action_map = gd.assignment_to_pomdp(gd.pomdp_sketch,assignment,restore_absorbing_states=False)
+        pomdp = gd.pomdp_sketch.build_pomdp(assignment).model
+        # pomdp.
+        # pomdp,true_action_map = gd.assignment_to_pomdp(gd.pomdp_sketch,assignment,restore_absorbing_states=False)
         pomdps.append(pomdp)
-        pomdp_maps.append(true_action_map)
+        # pomdp_maps.append(true_action_map)
+        # print(true_action_map)
         
     dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/union/"
     os.makedirs(dr, exist_ok=True)
@@ -152,17 +162,23 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
 
     # create and solve the union
     union_pomdp = payntbind.synthesis.createModelUnion(pomdps)
+    
     if method == Method.SAYNT:
         # Don't need Saynt hotfix here, running on a single POMDP.
-        fsc = gd.solve_pomdp_saynt(union_pomdp, gd.pomdp_sketch.specification, nodes, timeout=timeout)
+        fsc = gd.solve_pomdp_saynt(union_pomdp, gd.pomdp_sketch.specification.copy(), nodes, timeout=timeout)
+    elif method == Method.PAYNT:
+        fsc = gd.solve_pomdp_paynt(union_pomdp, gd.pomdp_sketch.specification.copy(), nodes, timeout=timeout)
     elif method == Method.GRADIENT:
-        value, resolution, action_function_params, memory_function_params, *_ = gd.gradient_descent_on_single_pomdp(union_pomdp, 150, nodes, timeout=timeout, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={})
+        value, resolution, action_function_params, memory_function_params, *_ = gd.gradient_descent_on_single_pomdp(union_pomdp, int(1e30) if timeout else 1000, nodes, timeout=timeout, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={})
         fsc = gd.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, nodes, gd.nO, gd.pomdp_sketch.observation_to_actions)
+    else:
+        raise ValueError(f"Method unknown: {method}")
 
     # the last observation is the fresh one for the fresh initial state
     # get the initial memory node set from this fres initial state
     assert fsc.num_observations == gd.pomdp_sketch.num_observations+1
     initial_node = fsc.update_function[0][-1]
+    print(initial_node, fsc.action_function[0][-1], fsc.action_function[1][-1])
 
     # get rid of the fresh observation
     for node in range(fsc.num_nodes):
@@ -171,14 +187,14 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
     fsc.num_observations -= 1
 
     # fix possibly dummy actions
-    for node in range(fsc.num_nodes):
-        for obs in range(fsc.num_observations):
-            action = fsc.action_function[node][obs]
-            if action is None:
-                continue
-            action_label = fsc.action_labels[action]
-            true_action_label = observation_action_to_true_action[obs][action_label]
-            fsc.action_function[node][obs] = fsc.action_labels.index(true_action_label)
+    # for node in range(fsc.num_nodes):
+    #     for obs in range(fsc.num_observations):
+    #         action = fsc.action_function[node][obs]
+    #         if action is None:
+    #             continue
+    #         action_label = fsc.action_labels[action]
+    #         true_action_label = observation_action_to_true_action[obs][action_label]
+    #         fsc.action_function[node][obs] = fsc.action_labels.index(true_action_label)
 
     # fill actions for unreachable observations
     for node in range(fsc.num_nodes):
@@ -190,7 +206,8 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
 
     # make 0 the initial node and reorder the actions
     node_order = list(range(fsc.num_nodes))
-    node_order[0] = initial_node; node_order[initial_node] = 0
+    node_order[0] = initial_node
+    node_order[initial_node] = 0
     fsc.reorder_nodes(node_order)
     fsc.reorder_actions(gd.pomdp_sketch.action_labels)
     fsc.check(gd.pomdp_sketch.observation_to_actions)
@@ -207,47 +224,34 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
         'subfamily' : assignment_values,
         'whole_family' : family_value,
         'fsc' : fsc,
-        'seed' : seed
+        'seed' : seed,
+        'hole_combinations' : hole_combinations
     }
 
     print(project_path.split('/')[-1], "Assignments:", assignment_values, 'family value:', family_value)
     with open(f"{dr}/union.pickle", 'wb') as handle:
         pickle.dump(results, handle)
 
-def run_env_heatmap(env, timeout=600):
-    subfamily_size = 5
-    subfamily_timeout = timeout // subfamily_size
-    max_num_nodes = 5
-    memory_model = None
+def run_env_all(env, timeout=3600, subfamily_size=10, seed=11):
     try:
-        run_subfamily_for_heatmap(env, timeout=subfamily_timeout, subfamily_size=subfamily_size, num_nodes=max_num_nodes, determine_memory_model=True, stratified=True)
-    except Exception as e:
-        print("SUBFAMILY EXPERIMENT FAILED FOR", env)
-        print(e)
-        print(traceback.format_exc())
-
-import traceback
-
-def run_env_lineplot(env, timeout=600):
-    max_num_nodes = 5
-    try:
-        memory_model = determine_memory_model_stratified(env, num_nodes=max_num_nodes, num_samples=4)
-        # run_family_softmax(env, num_nodes=max(memory_model), memory_model=memory_model, dynamic_memory=False, seed=11)
-        run_family_experiment_for_lineplot(env, max(memory_model), memory_model, max_iter=1000, timeout=timeout)
-        # run_family_experiment(env, 5, memory_model=None, max_iter=1000, timeout=timeout)
+        memory_model = determine_memory_model_stratified(env, num_nodes=MAX_NUM_NODES, num_samples=subfamily_size, seed=seed)
+        run_family_experiment_for_lineplot(env, max(memory_model), memory_model, max_iter=MAX_ITER, timeout=timeout, seed=seed)
     except Exception as e:
         print("FULL FAMILY GRADIENT DESCENT EXPERIMENT FAILED FOR", env)
         print(e)
         print(traceback.format_exc())
-
-def run_env_all(env, timeout=600):
-    run_env_lineplot(env, timeout)
-    run_env_heatmap(env, timeout)
     try:
-        run_union(env, timeout=timeout)
+        run_subfamily_for_heatmap(env, timeout=timeout//subfamily_size, subfamily_size=subfamily_size, baselines=[Method.SAYNT], num_nodes=MAX_NUM_NODES, determine_memory_model=True, stratified=True, seed=seed)
+    except Exception as e:
+        print("SUBFAMILY EXPERIMENT FAILED FOR", env)
+        print(e)
+        print(traceback.format_exc())
+    try:
+        run_union(env, timeout=timeout, num_assignments=subfamily_size, stratified=True, seed=seed)
     except Exception as e:
         print("UNION EXPERIMENT FAILED FOR", env)
         print(e)
+        print(traceback.format_exc())
 
 def run_union_all():
     for env in ENVS:
@@ -265,6 +269,5 @@ def run_parallel():
     with Pool(min(len(ENVS), MAX_THREADS)) as p:
         p.map(run_env_all, ENVS)
 
-# run()
-# run_env_all(ILLUSTRATIVE, timeout=10)
-# run_env_heatmap(ILLUSTRATIVE_TWO, timeout=10)
+# run_parallel()
+run_union(OBSTACLES_EIGHTH_THREE, method=Method.SAYNT)

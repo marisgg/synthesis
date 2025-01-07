@@ -57,13 +57,15 @@ def stablesoftmax(x, temperature = 1) -> np.ndarray:
 
 class POMDPFamiliesSynthesis:
     
-    def __init__(self, project_path : str, seed : int = 11, use_softmax : bool = False, learning_rate = 0.001, minibatch_size = 256, steps = 10, use_momentum = True, dynamic_memory = False):
+    def __init__(self, project_path : str, seed : int = 11, use_softmax : bool = False, learning_rate = 0.001, minibatch_size = 256, steps = 10, use_momentum = True, dynamic_memory = False, union = False):
         random.seed(seed)
         np.random.seed(seed)
         
         self.project_path = project_path
         
         os.makedirs('./cache/', exist_ok=True)
+        
+        self.union = union
 
         self.gd_trace = []
         self.family_trace = []
@@ -90,7 +92,7 @@ class POMDPFamiliesSynthesis:
 
         self.storm_control = None
 
-        self.nO = self.pomdp_sketch.num_observations
+        self.nO = self.pomdp_sketch.num_observations + (1 if self.union else 0)
         self.nA = self.pomdp_sketch.num_actions
 
         self.reward_model_name = self.pomdp_sketch.get_property().get_reward_name()
@@ -123,7 +125,9 @@ class POMDPFamiliesSynthesis:
         pomdp_sketch = paynt.parser.sketch.Sketch.load_sketch(sketch_path, properties_path)
         return pomdp_sketch
 
+    @DeprecationWarning
     def assignment_to_pomdp(self, pomdp_sketch, assignment, restore_absorbing_states=True):
+        
         pomdp = pomdp_sketch.build_pomdp(assignment).model
         if restore_absorbing_states:
             updated = payntbind.synthesis.restoreActionsInAbsorbingStates(pomdp)
@@ -443,6 +447,21 @@ class POMDPFamiliesSynthesis:
         denom = pc.FactorizedPolynomial(pc.Rational(1))
 
         ndi = pomdp.nondeterministic_choice_indices
+        
+        o_to_a = copy.deepcopy(pomdp_sketch.observation_to_actions)
+        
+        # For UNION compatibility
+        if self.union:
+            init_state = pomdp.states[pomdp.initial_states[0]]
+            init_obs = pomdp.observations[init_state.id]
+            print("RUNNING UNION pDTMC")
+            if len(o_to_a) == init_obs:
+                o_to_a.append([0])
+            if len(memory_model) == init_obs:
+                memory_model = copy.deepcopy(memory_model)
+                memory_model.append(1)
+            else:
+                print("NOT CHANGING MEMORY MODEL")
 
         labels = pomdp.labeling
 
@@ -456,7 +475,7 @@ class POMDPFamiliesSynthesis:
             o = pomdp.observations[s]
             for action in pomdp.states[s].actions:
                 a = action.id
-                quotient_action = pomdp_sketch.observation_to_actions[o][a]
+                quotient_action = o_to_a[o][a]
                 choice = ndi[s]+a
                 reward = state_action_rewards[choice]
                 N = num_nodes
@@ -477,6 +496,9 @@ class POMDPFamiliesSynthesis:
                             states.add(tMC)
                             act_tup = (n, o, quotient_action)
                             mem_tup = (n, o, m)
+                            
+                            # if o == init_obs:
+                                # print("HERE:", f"s{s}, n{n}, o{o}, a{a}, m{m}, t{t}")
 
                             if sanity_checks: 
                                 assert (sMC, tMC, a) not in seen, (sMC, tMC, seen)
@@ -490,7 +512,7 @@ class POMDPFamiliesSynthesis:
                                 action_function_params[act_tup] = act_param
                             else:
                                 action_ids = [b.id for b in pomdp.states[s].actions]
-                                quotient_actions = pomdp_sketch.observation_to_actions[o]
+                                quotient_actions = o_to_a[o]
                                 if not distinct_parameters_for_final_probability and a == max(action_ids):
                                     act_param = pc.Rational(1)
                                     for a_ in quotient_actions:
@@ -502,7 +524,7 @@ class POMDPFamiliesSynthesis:
                                     assert pycarl.variable_with_name(p_a_name).is_no_variable, (p_a_name, action_function_params)
                                     act_param = pycarl.Variable(p_a_name)
                                     if self.use_softmax: parameter_resolution[act_param] = random.gauss(mu=0, sigma=1)
-                                    resolution[act_param] = pc.Rational(1 / len(pomdp_sketch.observation_to_actions[o]))
+                                    resolution[act_param] = pc.Rational(1 / len(o_to_a[o]))
                                     counter += 1
 
                                 action_function_params[act_tup] = act_param
@@ -681,6 +703,8 @@ class POMDPFamiliesSynthesis:
     def gradient_descent_on_single_pomdp(self, pomdp, num_iters : int, num_nodes : int, action_function_params = {}, memory_function_params = {}, resolution = {}, parameter_resolution = None, timeout = None, memory_model = None):
         if memory_model is None:
             memory_model = [num_nodes] * self.nO
+            if self.union: # if running with union, use only a single memory node for the initial dummy observation.
+                memory_model[self.nO-1] = 1
         pmc, action_function_params, memory_function_params, resolution, parameter_resolution = self.construct_pmc(pomdp, self.pomdp_sketch, self.reward_model_name, num_nodes, distinct_parameters_for_final_probability=self.use_softmax, parameter_resolution=parameter_resolution, resolution=resolution, action_function_params=action_function_params, memory_function_params=memory_function_params, memory_model=memory_model)
         current_parameters = list(pmc.collect_all_parameters())
         
@@ -700,7 +724,7 @@ class POMDPFamiliesSynthesis:
         for p in pmc.collect_all_parameters():
             assert p in action_function_params_no_const.values() or p in memory_function_params_no_const.values()
         
-        assert set(pmc.collect_all_parameters()) <= set(list(resolution.keys())), "\n".join(["The parameters of the pDTMC:", str(pmc.collect_all_parameters()), "should be a subset of the probabilistic resolution mapping of the parameters:", str(list(resolution.keys()))])
+        assert set(pmc.collect_all_parameters()) <= set(list(resolution.keys())), "\n".join(["The parameters of the pDTMC:", str(pmc.collect_all_parameters()), "should be a subset of the probabilistic resolution mapping of the parameters:", str(list(resolution.keys())), "Difference:", str(set(pmc.collect_all_parameters()) - set(list(resolution.keys())))])
         
         if timeout:
             tik = time.time()
@@ -769,6 +793,8 @@ class POMDPFamiliesSynthesis:
         
         if memory_model is None:
             memory_model = [num_nodes] * self.nO
+            if self.union: # if running with union, use only a single memory node for the initial dummy observation.
+                memory_model[self.nO-1] = 1
         
         assert max(memory_model) <= num_nodes
         
@@ -781,7 +807,7 @@ class POMDPFamiliesSynthesis:
         best_fsc = None
         
         if assignments is None:
-            print("Running on 'entire' family of size:", )
+            print("Running on 'entire' family of size:", self.pomdp_sketch.family.size)
         else:
             print("Running on sub-family of size:", len(assignments))
         

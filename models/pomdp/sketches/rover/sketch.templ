@@ -6,10 +6,10 @@ pomdp
 const int num_tasks = 4;
 
 // tasks
-hole double pr1 in {0.4..0.6:0.1};
-hole double pr2 in {0.5..0.7:0.1};
-hole double pr3 in {0.8..1.0:0.1};
-hole double pr4 in {0.1..0.3:0.1};
+hole double pr1 in {0.4..0.6:0.2};
+hole double pr2 in {0.5..0.7:0.2};
+hole double pr3 in {0.8..1.0:0.2};
+hole double pr4 in {0.1..0.3:0.2};
 
 module task
 	// current task (0 means no task)
@@ -26,10 +26,9 @@ endmodule
 
 
 // energy
-
-hole double energy_low in {0.95..0.99:0.01};
-hole double energy_medium in {0.90..0.94:0.01};
-hole double energy_high in {0.80..0.89:0.01};
+hole double energy_low in {0.90..0.99:0.02};
+hole double energy_medium in {0.85..0.94:0.02};
+hole double energy_high in {0.80..0.89:0.02};
 
 module energy
 	increased_energy : bool init false;
@@ -48,11 +47,11 @@ formula low_energy_task = (task=1 | task=3);
 formula medium_energy_task = (task=2);
 formula high_energy_task = (task=4);
 
-const int bat_max = 3;
+hole int bat_capacity in {3..5:1};
 formula empty = bat=0;
 label "empty" = empty;
 module battery
-	bat: [0..bat_max] init bat_max;
+    bat: [0..bat_capacity_MAX] init bat_capacity_MAX;
 	[task1] !empty -> true;
 	[task2] !empty -> true;
 	[task3] !empty -> true;
@@ -69,14 +68,17 @@ formula low_value_task = (task=3);
 formula medium_value_task = (task=1 | task=2);
 formula high_value_task = (task=4);
 
-hole int reward_low in {1..9:1};
-hole int reward_medium in {10..19:1};
-hole int reward_high in {20..40:2};
+const int reward_low = 5;
+const int reward_medium = 10;
+const int reward_high = 20;
+//hole int reward_low in {2..20:2};
+//hole int reward_medium in {10..30:2};
+//hole int reward_high in {20..40:2};
 
 rewards "value"
-	[task_done] success & low_value_task: reward_low;
-	[task_done] success & medium_value_task: reward_medium;
-	[task_done] success & high_value_task: reward_high;
+    [task_done] success & low_value_task: reward_low * ((bat_capacity_MAX+1-bat_capacity) / (bat_capacity_MAX+1)) * (1-energy_low) * (1-pr1) * (1-pr3);
+    [task_done] success & medium_value_task: reward_medium * (bat_capacity_MAX+1-bat_capacity / (bat_capacity_MAX+1)) * (1-energy_medium) * (1-pr2);
+    [task_done] success & high_value_task: reward_high * (bat_capacity_MAX+1-bat_capacity / (bat_capacity_MAX+1))* (1-energy_high) * (1-pr4);
 endrewards
 
 observable "increased_energy" = increased_energy;

@@ -22,7 +22,7 @@ from config import *
 parser = argparse.ArgumentParser()
 parser.add_argument("hole_combination", type=str)
 parser.add_argument("timeout", type=int)
-parser.add_argument("project_path", type=str, choices=ENVS)
+parser.add_argument("project_path", type=str, choices=POSSIBLE_ENVS)
 parser.add_argument("filename", type=str)
 args = parser.parse_args()
 
