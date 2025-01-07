@@ -5,4 +5,6 @@ FROM $paynt_base
 
 WORKDIR /opt/payntdev
 
+COPY setup.bash setup.bash
+
 RUN bash setup.bash
