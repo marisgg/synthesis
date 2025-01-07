@@ -1,6 +1,6 @@
 MAX_THREADS = 10
 
-BASE_OUTPUT_DIR = "./output-parallel-full"
+BASE_OUTPUT_DIR = "./output/parallel-full"
 
 BASE_SKETCH_DIR = 'models/pomdp/sketches'
 
