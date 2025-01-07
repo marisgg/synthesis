@@ -63,7 +63,7 @@ class POMDPFamiliesSynthesis:
         
         self.project_path = project_path
         
-        os.makedirs('./cache/', exist_ok=True)
+        os.makedirs('/tmp/', exist_ok=True)
         
         self.union = union
 
@@ -218,7 +218,7 @@ class POMDPFamiliesSynthesis:
     
     def solve_pomdp_saynt_hotfix(self, hole_assignment, timeout):
         import subprocess
-        filename = f'/tmp/{time.time()}-temp-fsc.pickle'
+        filename = f'/tmp/{self.project_path}-{time.time()}-temp-fsc.pickle'
         print(hole_assignment)
         result = subprocess.run(["python3", "saynt_call.py", str(tuple(hole_assignment)), str(timeout), self.project_path, filename], timeout=10*timeout)
         assert result.returncode == 0, f"returncode={result.returncode}, args=" + " ".join(result.args)
