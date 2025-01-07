@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 VOLUME_DIR='/opt/payntdev'
 
+set -e
+
 # Fix GIL issues in Stormpy for Saynt
 cd /opt/stormpy
 git apply ${VOLUME_DIR}/GILhack.patch
