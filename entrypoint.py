@@ -269,5 +269,4 @@ def run_parallel():
     with Pool(min(len(ENVS), MAX_THREADS)) as p:
         p.map(run_env_all, ENVS)
 
-# run_parallel()
-run_union(OBSTACLES_EIGHTH_THREE, method=Method.SAYNT)
+run_parallel()
