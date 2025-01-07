@@ -240,6 +240,7 @@ def run_env_all(env, timeout=3600, subfamily_size=10, seed=11):
         print("FULL FAMILY GRADIENT DESCENT EXPERIMENT FAILED FOR", env)
         print(e)
         print(traceback.format_exc())
+        raise e
     try:
         run_subfamily_for_heatmap(env, timeout=timeout//subfamily_size, subfamily_size=subfamily_size, baselines=[Method.SAYNT], num_nodes=MAX_NUM_NODES, determine_memory_model=True, stratified=True, seed=seed)
     except Exception as e:
@@ -269,4 +270,6 @@ def run_parallel():
     with Pool(min(len(ENVS), MAX_THREADS)) as p:
         p.map(run_env_all, ENVS)
 
-run_parallel()
+# run_parallel()
+run_env_all(OBSTACLES_TEN_TWO)
+# run_union(OBSTACLES_TEN_TWO, timeout=3600, num_assignments=10, stratified=True, seed=11)

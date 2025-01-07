@@ -221,7 +221,7 @@ class POMDPFamiliesSynthesis:
         filename = f'/tmp/{self.project_path.replace("/",'-')}-{time.time()}-temp-fsc.pickle'
         print(hole_assignment)
         result = subprocess.run(["python3", "saynt_call.py", str(tuple(hole_assignment)), str(timeout), self.project_path, filename], timeout=10*timeout)
-        assert result.returncode == 0, f"returncode={result.returncode}, args=" + " ".join(result.args) + f"\n\n{result.stderr}" + f"\n\n{result.stdout}"
+        assert result.returncode == 0, f"returncode={result.returncode}, args=" + " ".join(result.args)
         with open(filename, 'rb') as handle:
             fsc = pickle.load(handle)
         return fsc
@@ -240,7 +240,7 @@ class POMDPFamiliesSynthesis:
                 pomdp_quotient, method="ar", fsc_synthesis=True, storm_control=storm_control
         )
         synthesizer.run(optimum_threshold=None)
-        assert synthesizer.storm_control.latest_paynt_result_fsc is not None
+        # assert synthesizer.storm_control.latest_paynt_result_fsc is not None
         fsc = synthesizer.storm_control.latest_paynt_result_fsc
         return fsc
 
@@ -279,7 +279,7 @@ class POMDPFamiliesSynthesis:
         assert len(set([tuple(x) for x in hole_combination_samples])) == len(hole_combination_samples)
         return self.create_subfamily(hole_combination_samples), hole_combination_samples
 
-    def determine_memory_model_from_assignments(self, assignments : list, hole_combinations : list, max_num_nodes = 5, timeout=15):
+    def determine_memory_model_from_assignments(self, assignments : list, hole_combinations : list, max_num_nodes = 5, timeout=30):
         print([str(a) for a in assignments])
         memory_models = []
         memory_model_matrix = np.zeros((len(assignments), self.nO), dtype=int)
@@ -289,7 +289,6 @@ class POMDPFamiliesSynthesis:
             else:
                 pomdp = self.pomdp_sketch.build_pomdp(assignment).model
                 spec = self.pomdp_sketch.specification.copy()
-                
                 fsc : paynt.quotient.fsc.FSC = self.solve_pomdp_saynt(pomdp, spec, max_num_nodes, timeout=timeout)
             if fsc is not None and fsc.memory_model is not None:
                 memory_models.append(fsc.memory_model)
