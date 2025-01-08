@@ -35,6 +35,8 @@ import gc
 import random
 import cProfile, pstats
 
+import subprocess
+
 from enum import Enum
 
 class Method(Enum):
@@ -217,13 +219,15 @@ class POMDPFamiliesSynthesis:
         return fsc
     
     def solve_pomdp_saynt_hotfix(self, hole_assignment, timeout):
-        import subprocess
         filename = f'/tmp/{os.getpid()}-{self.project_path.replace("/",'-')}-{time.time()}-temp-fsc.pickle'
         print(hole_assignment)
-        result = subprocess.run(["python3", "saynt_call.py", str(tuple(hole_assignment)), str(timeout), self.project_path, filename], timeout=10*timeout)
-        assert result.returncode == 0, f"returncode={result.returncode}, args=" + " ".join(result.args)
-        with open(filename, 'rb') as handle:
-            fsc = pickle.load(handle)
+        result = subprocess.run(["python3", "saynt_call.py", str(tuple(hole_assignment)), str(timeout), self.project_path, filename], timeout=10*timeout, capture_output=True)
+        if result.returncode == 0:
+            with open(filename, 'rb') as handle:
+                fsc = pickle.load(handle)
+        else:
+            print(f"SAYNTFIXFAIL, returncode={result.returncode}, args=", " ".join(result.args), result.stderr, result.stdout)
+            fsc = None
         return fsc
 
     def solve_pomdp_saynt(self, pomdp, specification, k=5, timeout=10):
