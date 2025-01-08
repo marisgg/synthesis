@@ -48,7 +48,7 @@ def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=True, seed=seed)
     fsc, value = gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, memory_model=memory_model)
 
-    results['gd-normal'] = store_results(gd, seed)
+    results['gd-normal'] = store_results(gd, seed, fsc, value)
     
     results['memory_model'] = memory_model
 
@@ -240,7 +240,6 @@ def run_env_all(env, timeout=3600, subfamily_size=10, seed=11):
         print("FULL FAMILY GRADIENT DESCENT EXPERIMENT FAILED FOR", env)
         print(e)
         print(traceback.format_exc())
-        raise e
     try:
         run_subfamily_for_heatmap(env, timeout=timeout//subfamily_size, subfamily_size=subfamily_size, baselines=[Method.SAYNT], num_nodes=MAX_NUM_NODES, determine_memory_model=True, stratified=True, seed=seed)
     except Exception as e:
