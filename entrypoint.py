@@ -1,5 +1,6 @@
 import copy
 import functools
+import itertools
 import os
 import random
 import stormpy
@@ -10,7 +11,7 @@ import paynt.quotient.fsc
 
 import traceback
 
-from multiprocessing import Pool
+import multiprocessing
 
 from config import *
 
@@ -232,33 +233,42 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
     with open(f"{dr}/union.pickle", 'wb') as handle:
         pickle.dump(results, handle)
 
-def run_env_all(env, timeout=3600, subfamily_size=10, seed=11):
+def run_lineplot_experiment(env):
     try:
-        memory_model = determine_memory_model_stratified(env, num_nodes=MAX_NUM_NODES, num_samples=subfamily_size, seed=seed)
-        run_family_experiment_for_lineplot(env, max(memory_model), memory_model, max_iter=MAX_ITER, timeout=timeout, seed=seed)
+        memory_model = determine_memory_model_stratified(env, num_nodes=MAX_NUM_NODES, num_samples=SUBFAMILY_SIZE, seed=SEED)
+        run_family_experiment_for_lineplot(env, max(memory_model), memory_model, max_iter=MAX_ITER, timeout=TIMEOUT, seed=SEED)
     except Exception as e:
         print("FULL FAMILY GRADIENT DESCENT EXPERIMENT FAILED FOR", env)
         print(e)
         print(traceback.format_exc())
+
+def run_heatmap_experiment(env):
     try:
-        run_subfamily_for_heatmap(env, timeout=timeout//subfamily_size, subfamily_size=subfamily_size, baselines=[Method.SAYNT], num_nodes=MAX_NUM_NODES, determine_memory_model=True, stratified=True, seed=seed)
+        run_subfamily_for_heatmap(env, timeout=TIMEOUT//SUBFAMILY_SIZE, subfamily_size=SUBFAMILY_SIZE, baselines=[Method.SAYNT], num_nodes=MAX_NUM_NODES, determine_memory_model=True, stratified=True, seed=SEED)
     except Exception as e:
         print("SUBFAMILY EXPERIMENT FAILED FOR", env)
         print(e)
         print(traceback.format_exc())
+
+def run_union_experiment(env):
     try:
-        run_union(env, timeout=timeout, num_assignments=subfamily_size, stratified=True, seed=seed)
+        run_union(env, timeout=TIMEOUT, num_assignments=SUBFAMILY_SIZE, stratified=True, seed=SEED)
     except Exception as e:
         print("UNION EXPERIMENT FAILED FOR", env)
         print(e)
         print(traceback.format_exc())
+
+def run_env_all(env):
+    run_lineplot_experiment(env)
+    run_heatmap_experiment(env)
+    run_union_experiment(env)
 
 def run_union_all():
     for env in ENVS:
         run_union(env)
 
 def run_union_all_parallel():
-    with Pool(min(len(ENVS), MAX_THREADS)) as p:
+    with multiprocessing.Pool(min(len(ENVS), MAX_THREADS)) as p:
         p.map(run_union, ENVS)
 
 def run():
@@ -266,7 +276,18 @@ def run():
         run_env_all(env)
 
 def run_parallel():
-    with Pool(min(len(ENVS), MAX_THREADS)) as p:
+    with multiprocessing.Pool(min(len(ENVS), MAX_THREADS)) as p:
         p.map(run_env_all, ENVS)
 
-run_parallel()
+def run_extreme(f, env):
+    f(env)
+
+def run_parallel_extreme():
+    nr = len(ENVS) * 3
+    assert nr <= MAX_THREADS
+    assert nr <= multiprocessing.cpu_count()
+    tasks = itertools.product([run_lineplot_experiment, run_heatmap_experiment, run_union_experiment], ENVS)
+    with multiprocessing.Pool(nr) as p:
+        p.starmap(run_extreme, tasks)
+
+run_parallel_extreme()

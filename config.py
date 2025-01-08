@@ -1,4 +1,4 @@
-MAX_THREADS = 10
+MAX_THREADS = 18
 
 BASE_OUTPUT_DIR = "./output/parallel-full"
 
@@ -8,6 +8,10 @@ USE_SAYNT_HOTFIX = True
 
 MAX_NUM_NODES = 5
 MAX_ITER = int(1e99)
+
+TIMEOUT=3600
+SUBFAMILY_SIZE=10
+SEED=11
 
 # WIP models, might get deleted:
 ACO = f"{BASE_SKETCH_DIR}/aco"
