@@ -393,24 +393,32 @@ class POMDPFamiliesSynthesis:
                 else:
                     fsc = self.solve_pomdp_paynt(pomdp, specification, num_nodes, timeout=timeout)
 
-                fsc = self.deterministic_fsc_to_stochastic_fsc(fsc)
-                fsc.num_observations = nO
+                if fsc is not None:
+                    fsc = self.deterministic_fsc_to_stochastic_fsc(fsc)
+                    fsc.num_observations = nO
 
-            dtmc_sketch = self.pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
-            one_by_one = paynt.synthesizer.synthesizer_onebyone.SynthesizerOneByOne(dtmc_sketch)
-            evaluations = {}
-            for j, family in enumerate(hole_assignments_to_test):
-                evaluations[j] = one_by_one.evaluate(family, keep_value_only=True)
-
-            if evaluate_on_whole_family:
-                synthesizer = paynt.synthesizer.synthesizer_ar.SynthesizerAR(dtmc_sketch)
-                synthesizer.synthesize(keep_optimum=True)
-                results[i] = (str(assignment), fsc, evaluations, synthesizer.best_assignment_value)
-                print(evaluations, synthesizer.best_assignment_value)
+            if fsc is None:
+                evaluations = {j : np.nan for j in range(len(hole_assignments_to_test))}
+                if evaluate_on_whole_family:
+                    results[i] = (str(assignment), fsc, evaluations, np.nan)
+                else:
+                    results[i] = (str(assignment), fsc, evaluations)
             else:
-                results[i] = (str(assignment), fsc, evaluations)
-                print(evaluations)
-        
+                dtmc_sketch = self.pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
+                one_by_one = paynt.synthesizer.synthesizer_onebyone.SynthesizerOneByOne(dtmc_sketch)
+                evaluations = {}
+                for j, family in enumerate(hole_assignments_to_test):
+                    evaluations[j] = one_by_one.evaluate(family, keep_value_only=True)
+
+                if evaluate_on_whole_family:
+                    synthesizer = paynt.synthesizer.synthesizer_ar.SynthesizerAR(dtmc_sketch)
+                    synthesizer.synthesize(keep_optimum=True)
+                    results[i] = (str(assignment), fsc, evaluations, synthesizer.best_assignment_value)
+                    print(evaluations, synthesizer.best_assignment_value)
+                else:
+                    results[i] = (str(assignment), fsc, evaluations)
+                    print(evaluations)
+
 
         if evaluate_on_whole_family:
             print("Whole family result:", [result[3] for result in results.values()])
