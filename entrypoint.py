@@ -113,7 +113,8 @@ def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, n
         'whole_family' : family_value,
         'fsc' : best_gd_fsc,
         'seed' : seed,
-        'hole_combinations' : hole_combinations
+        'hole_combinations' : hole_combinations,
+        'memory_model' : memory_model
     }
 
     print("OURS:", our_evaluations, 'family value:', family_value)
