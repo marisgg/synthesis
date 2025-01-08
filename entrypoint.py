@@ -1,6 +1,7 @@
 import copy
 import functools
 import itertools
+import math
 import os
 import random
 import stormpy
@@ -124,7 +125,7 @@ def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, n
     return memory_model
 
 def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, nodes=2, stratified=True, seed=11):
-    gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, learning_rate=0.1, steps=1, union=True)
+    gd : POMDPFamiliesSynthesis = POMDPFamiliesSynthesis(project_path, use_softmax=True, learning_rate=0.1, steps=1, union=True, seed=seed)
 
     if stratified:
         assignments, hole_combinations = gd.stratified_subfamily_sampling(num_assignments, seed=seed)
@@ -175,52 +176,58 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
         fsc = gd.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, nodes, gd.nO, gd.pomdp_sketch.observation_to_actions)
     else:
         raise ValueError(f"Method unknown: {method}")
+    
+    if fsc is None:
+        # Run failed, store arbitrary values.
+        undefined = (math.inf if gd.minimizing else -math.inf)
+        assignment_values = {j : undefined for j in range(len(hole_combinations))}
+        family_value = undefined
+    else:
+        # the last observation is the fresh one for the fresh initial state
+        # get the initial memory node set from this fres initial state
+        assert fsc.num_observations == gd.pomdp_sketch.num_observations+1
+        initial_node = fsc.update_function[0][-1]
+        print(initial_node, fsc.action_function[0][-1], fsc.action_function[1][-1])
 
-    # the last observation is the fresh one for the fresh initial state
-    # get the initial memory node set from this fres initial state
-    assert fsc.num_observations == gd.pomdp_sketch.num_observations+1
-    initial_node = fsc.update_function[0][-1]
-    print(initial_node, fsc.action_function[0][-1], fsc.action_function[1][-1])
+        # get rid of the fresh observation
+        for node in range(fsc.num_nodes):
+            fsc.action_function[node] = fsc.action_function[node][:-1]
+            fsc.update_function[node] = fsc.update_function[node][:-1]
+        fsc.num_observations -= 1
 
-    # get rid of the fresh observation
-    for node in range(fsc.num_nodes):
-        fsc.action_function[node] = fsc.action_function[node][:-1]
-        fsc.update_function[node] = fsc.update_function[node][:-1]
-    fsc.num_observations -= 1
+        # fix possibly dummy actions
+        # for node in range(fsc.num_nodes):
+        #     for obs in range(fsc.num_observations):
+        #         action = fsc.action_function[node][obs]
+        #         if action is None:
+        #             continue
+        #         action_label = fsc.action_labels[action]
+        #         true_action_label = observation_action_to_true_action[obs][action_label]
+        #         fsc.action_function[node][obs] = fsc.action_labels.index(true_action_label)
 
-    # fix possibly dummy actions
-    # for node in range(fsc.num_nodes):
-    #     for obs in range(fsc.num_observations):
-    #         action = fsc.action_function[node][obs]
-    #         if action is None:
-    #             continue
-    #         action_label = fsc.action_labels[action]
-    #         true_action_label = observation_action_to_true_action[obs][action_label]
-    #         fsc.action_function[node][obs] = fsc.action_labels.index(true_action_label)
+        # fill actions for unreachable observations
+        for node in range(fsc.num_nodes):
+            for obs in range(fsc.num_observations):
+                if fsc.action_function[node][obs] is None:
+                    available_action = gd.pomdp_sketch.observation_to_actions[obs][0]
+                    available_action_label = gd.pomdp_sketch.action_labels[available_action]
+                    fsc.action_function[node][obs] = fsc.action_labels.index(available_action_label)
 
-    # fill actions for unreachable observations
-    for node in range(fsc.num_nodes):
-        for obs in range(fsc.num_observations):
-            if fsc.action_function[node][obs] is None:
-                available_action = gd.pomdp_sketch.observation_to_actions[obs][0]
-                available_action_label = gd.pomdp_sketch.action_labels[available_action]
-                fsc.action_function[node][obs] = fsc.action_labels.index(available_action_label)
+        # make 0 the initial node and reorder the actions
+        node_order = list(range(fsc.num_nodes))
+        node_order[0] = initial_node
+        node_order[initial_node] = 0
+        fsc.reorder_nodes(node_order)
+        fsc.reorder_actions(gd.pomdp_sketch.action_labels)
+        fsc.check(gd.pomdp_sketch.observation_to_actions)
 
-    # make 0 the initial node and reorder the actions
-    node_order = list(range(fsc.num_nodes))
-    node_order[0] = initial_node
-    node_order[initial_node] = 0
-    fsc.reorder_nodes(node_order)
-    fsc.reorder_actions(gd.pomdp_sketch.action_labels)
-    fsc.check(gd.pomdp_sketch.observation_to_actions)
+        fsc.make_stochastic()
 
-    fsc.make_stochastic()
+        dtmc_sketch = gd.get_dtmc_sketch(fsc)
 
-    dtmc_sketch = gd.get_dtmc_sketch(fsc)
+        assignment_values = gd.get_values_on_subfamily(dtmc_sketch, assignments)
 
-    assignment_values = gd.get_values_on_subfamily(dtmc_sketch, assignments)
-
-    _, family_value = gd.paynt_call(dtmc_sketch)
+        _, family_value = gd.paynt_call(dtmc_sketch)
 
     results = {
         'subfamily' : assignment_values,
