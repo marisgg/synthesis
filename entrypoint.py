@@ -20,7 +20,7 @@ import pickle
 
 def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model=None, timeout=None, max_iter=1000, seed=11):
 
-    dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/"
+    dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/{seed}/"
     os.makedirs(dr, exist_ok=True)
     results = {}
     
@@ -46,6 +46,9 @@ def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model
     fsc, value = gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, memory_model=memory_model, random_selection=True)
     
     results['gd-random'] = store_results(gd, seed, fsc, value)
+    
+    with open(f"{dr}/gd-experiment.pickle", 'wb') as handle:
+        pickle.dump(results, handle)
 
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=True, seed=seed)
     fsc, value = gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, memory_model=memory_model)
@@ -90,7 +93,7 @@ def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, n
         memory_model = gd.determine_memory_model_from_assignments(subfamily_assigments, hole_combinations, max_num_nodes=num_nodes)
         num_nodes = int(max(memory_model))
 
-    dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/{subfamily_size}/"
+    dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/{subfamily_size}/{seed}"
     os.makedirs(dr, exist_ok=True)
 
     for method in baselines:
@@ -142,7 +145,7 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
         # pomdp_maps.append(true_action_map)
         # print(true_action_map)
         
-    dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/union/"
+    dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/union/{seed}"
     os.makedirs(dr, exist_ok=True)
 
     # make sure that all POMDPs have the same action mapping so we can store only one copy
