@@ -20,7 +20,7 @@ import pickle
 
 def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model=None, timeout=None, max_iter=1000, seed=11):
 
-    dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/seed={seed}/"
+    dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/seed{seed}/"
     os.makedirs(dr, exist_ok=True)
     results = {}
     
@@ -29,6 +29,7 @@ def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model
             'family_trace' : gd.family_trace,
             'gd_trace' : gd.gd_trace,
             'current_values' : gd.current_values,
+            'current_values_plot_times' : gd.current_values_plot_times,
             'plot_times' : gd.plot_times,
             'seed' : seed,
             'best_worst_value' : value,
@@ -63,8 +64,8 @@ def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model
 def determine_memory_model_stratified(project_path, num_nodes = 2, seed=11, num_samples=5):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, seed=seed)
     assignments, hole_combinations = gd.stratified_subfamily_sampling(num_samples, seed=seed)
-    mem = gd.determine_memory_model_from_assignments(assignments, hole_combinations, max_num_nodes=num_nodes)
-    # mem = gd.determine_memory_model_from_assignments_via_belief_exploration(assignments, max_num_nodes=num_nodes)
+    mem = gd.determine_memory_model_from_assignments(assignments, hole_combinations, max_num_nodes=num_nodes, timeout=SAYNT_MEMORY_MODEL_TIMEOUT)
+    # mem = gd.determine_memory_model_from_assignments_via_belief_exploration(assignments, max_num_nodes=num_nodes, timeout=SAYNT_MEMORY_MODEL_TIMEOUT)
     print(mem)
     return mem
 
@@ -90,10 +91,10 @@ def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, n
         num_iters = 1000
     
     if determine_memory_model:
-        memory_model = gd.determine_memory_model_from_assignments(subfamily_assigments, hole_combinations, max_num_nodes=num_nodes)
+        memory_model = gd.determine_memory_model_from_assignments(subfamily_assigments, hole_combinations, max_num_nodes=num_nodes, timeout=SAYNT_MEMORY_MODEL_TIMEOUT)
         num_nodes = int(max(memory_model))
 
-    dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/subfamsize={subfamily_size}/seed={seed}"
+    dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/subfamsize{subfamily_size}/seed{seed}"
     os.makedirs(dr, exist_ok=True)
 
     for method in baselines:
@@ -127,7 +128,7 @@ def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, n
     
     return memory_model
 
-def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, nodes=2, stratified=True, seed=11):
+def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, num_nodes=2, stratified=True, seed=11, determine_memory_model = True):
     gd : POMDPFamiliesSynthesis = POMDPFamiliesSynthesis(project_path, use_softmax=True, learning_rate=0.1, steps=1, use_momentum=True, union=True, seed=seed)
 
     if stratified:
@@ -145,7 +146,7 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
         # pomdp_maps.append(true_action_map)
         # print(true_action_map)
         
-    dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/union/seed={seed}"
+    dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/union/seed{seed}"
     os.makedirs(dr, exist_ok=True)
 
     # make sure that all POMDPs have the same action mapping so we can store only one copy
@@ -171,13 +172,15 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
     
     if method == Method.SAYNT:
         # Don't need Saynt hotfix here, running on a single POMDP.
-        fsc = gd.solve_pomdp_saynt(union_pomdp, gd.pomdp_sketch.specification.copy(), nodes, timeout=timeout)
+        fsc = gd.solve_pomdp_saynt(union_pomdp, gd.pomdp_sketch.specification.copy(), num_nodes, timeout=timeout)
     elif method == Method.PAYNT:
-        fsc = gd.solve_pomdp_paynt(union_pomdp, gd.pomdp_sketch.specification.copy(), nodes, timeout=timeout)
+        fsc = gd.solve_pomdp_paynt(union_pomdp, gd.pomdp_sketch.specification.copy(), num_nodes, timeout=timeout)
     elif method == Method.GRADIENT:
-        memory_model = determine_memory_model_stratified(project_path, num_nodes=nodes, seed=seed, num_samples=num_assignments)
-        value, resolution, action_function_params, memory_function_params, *_ = gd.gradient_descent_on_single_pomdp(union_pomdp, int(1e30) if timeout else 1000, nodes, timeout=timeout, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={}, memory_model=memory_model)
-        fsc = gd.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, nodes, gd.nO, gd.pomdp_sketch.observation_to_actions)
+        if determine_memory_model:
+            memory_model = gd.determine_memory_model_from_assignments(assignments, hole_combinations, max_num_nodes=num_nodes, timeout=SAYNT_MEMORY_MODEL_TIMEOUT)
+            num_nodes = int(max(memory_model))
+        value, resolution, action_function_params, memory_function_params, *_ = gd.gradient_descent_on_single_pomdp(union_pomdp, int(1e30) if timeout else 1000, num_nodes, timeout=timeout, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={}, memory_model=memory_model)
+        fsc = gd.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, gd.nO, gd.pomdp_sketch.observation_to_actions)
     else:
         raise ValueError(f"Method unknown: {method}")
     
@@ -307,4 +310,7 @@ def run_parallel_extreme_large():
     with multiprocessing.Pool(MAX_THREADS) as p:
         p.starmap(run_extreme, tasks)
 
-run_parallel_extreme_large()
+# run_parallel_extreme_large()
+# run_union(ROVER, method=Method.GRADIENT, num_assignments=2)
+# run_lineplot_experiment(AVOID, )
+run_family_experiment_for_lineplot(AVOID, 2, memory_model=None, timeout=60, seed=12)

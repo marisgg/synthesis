@@ -5,6 +5,7 @@ BASE_OUTPUT_DIR = "./output/parallel-IJCAI"
 BASE_SKETCH_DIR = 'models/pomdp/sketches'
 
 USE_SAYNT_HOTFIX = True
+SAYNT_MEMORY_MODEL_TIMEOUT = 30
 
 MAX_NUM_NODES = 5
 MAX_ITER = int(1e99)

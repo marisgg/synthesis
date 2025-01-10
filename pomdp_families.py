@@ -70,8 +70,15 @@ class POMDPFamiliesSynthesis:
         self.union = union
 
         self.gd_trace = []
+        self.gd_trace_plot_times = []
+
         self.family_trace = []
         self.plot_times = []
+
+        self.current_values = []
+        self.current_values_plot_times = []
+        
+        self.burnin_iterations = 1
         
         self.dynamic_memory = dynamic_memory
         
@@ -303,6 +310,9 @@ class POMDPFamiliesSynthesis:
         pointwise_max_memory_model = memory_model_matrix.max(axis=0)
         print(pointwise_max_memory_model)
         
+        if self.union:
+            pointwise_max_memory_model[-1] = max(pointwise_max_memory_model[-1], 1)
+        
         return np.minimum(pointwise_max_memory_model, max_num_nodes).tolist()
     
     def memory_model_from_belief_exploration(self, assignment):
@@ -472,7 +482,7 @@ class POMDPFamiliesSynthesis:
                 memory_model = copy.deepcopy(memory_model)
                 memory_model.append(1)
             else:
-                print("NOT CHANGING MEMORY MODEL")
+                print("NOT CHANGING MEMORY MODEL:", memory_model)
 
         labels = pomdp.labeling
 
@@ -802,8 +812,10 @@ class POMDPFamiliesSynthesis:
                     raise e
             print(i, current_value)
             self.gd_trace.append(current_value)
-            if timeout and time.time() - tik > timeout:
-                break
+            if timeout:
+                self.gd_trace_plot_times.append(time.time() - tik)
+                if time.time() - tik > timeout:
+                    break
         
         return current_value, resolution, action_function_params, memory_function_params, parameter_resolution
 
@@ -835,8 +847,7 @@ class POMDPFamiliesSynthesis:
             print("Running on 'entire' family of size:", self.pomdp_sketch.family.size)
         else:
             print("Running on sub-family of size:", len(assignments))
-        
-        self.current_values = []
+
         resolution = {}
         
         parameter_resolution = {} if self.use_softmax else None
@@ -848,19 +859,24 @@ class POMDPFamiliesSynthesis:
             
             artificial_upper_bound = None # if current_value is None else current_value * (0.9 if self.minimizing else 1.1)
             
-            if i > 0:
+            if i > (self.burnin_iterations - 1):
                 paynt_tik = time.time()
-                fsc = self.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, self.nO, self.pomdp_sketch.observation_to_actions, memory_model=memory_model)
-                dtmc_sketch =  self.pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
-                assignment, paynt_value = self.paynt_call(dtmc_sketch, assignments=assignments, artificial_upper_bound=artificial_upper_bound, random_selection=random_selection)
-                paynt_tok = time.time() - paynt_tik
-                print("Paynt value:", paynt_value, "previous family best:", best_family_value, 'paynt duration:', paynt_tok)
-                self.family_trace.append(paynt_value)
-                if op(paynt_value, best_family_value):
-                    best_fsc = fsc
-                    best_family_value = paynt_value
-                if timeout and random_selection: # Do not take into account the Paynt worst-case evaluation time for random selection baseline.
-                    timeout += paynt_tok
+                if not random_selection or (random_selection and i % 10 == 0):
+                    fsc = self.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, self.nO, self.pomdp_sketch.observation_to_actions, memory_model=memory_model)
+                    dtmc_sketch =  self.pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
+                    assignment, paynt_value = self.paynt_call(dtmc_sketch, assignments=assignments, artificial_upper_bound=artificial_upper_bound, random_selection=random_selection)
+                    paynt_tok = time.time() - paynt_tik
+                    print("Paynt value:", paynt_value, "previous family best:", best_family_value, 'paynt duration:', paynt_tok)
+                    self.family_trace.append(paynt_value)
+                    if timeout:
+                        self.plot_times.append(time.time() - tik)
+                    if op(paynt_value, best_family_value):
+                        best_fsc = fsc
+                        best_family_value = paynt_value
+                    if timeout and random_selection: # Do not take into account the Paynt worst-case evaluation time for random selection baseline.
+                        timeout += paynt_tok
+                else:
+                    assignment = self.pomdp_sketch.family.pick_random()
                 if timeout and time.time() - tik > timeout: break
             else:
                 assignment = self.pomdp_sketch.family.pick_any()
@@ -904,9 +920,8 @@ class POMDPFamiliesSynthesis:
             current_value, new_resolution, action_function_params, memory_function_params, new_parameter_resolution = self.gradient_descent_on_single_pomdp(pomdp, 10 // self.gd_steps, num_nodes, action_function_params=action_function_params, memory_function_params=memory_function_params, resolution=resolution, parameter_resolution=parameter_resolution, memory_model=memory_model)
             
             self.current_values.append(current_value)
-            
             if timeout:
-                self.plot_times.append(time.time() - tik)
+                self.current_values_plot_times.append(time.time() - tik)
             
             print(f"{i} | Latest GD value: {current_value}")
 
