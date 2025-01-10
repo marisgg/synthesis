@@ -1,6 +1,6 @@
 MAX_THREADS = 18
 
-BASE_OUTPUT_DIR = "./output/parallel-full"
+BASE_OUTPUT_DIR = "./output/parallel-IJCAI"
 
 BASE_SKETCH_DIR = 'models/pomdp/sketches'
 
