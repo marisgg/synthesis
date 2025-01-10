@@ -435,17 +435,17 @@ class POMDPFamiliesSynthesis:
     def construct_pmc(self, pomdp, pomdp_sketch, reward_model_name, num_nodes, action_function_params = {}, memory_function_params = {}, resolution = {}, parameter_resolution = None, distinct_parameters_for_final_probability = False, sanity_checks = False, memory_model = None):
         if action_function_params == memory_function_params == resolution == {}:
             pycarl.clear_pools()
-        
+
         builder : stormpy.storage.storage.ParametricSparseMatrixBuilder = stormpy.storage.ParametricSparseMatrixBuilder()
-        
+
         print(memory_model)
-        
+
         counter = 0
-        
+
         seen = set()
-        
+
         pmc_transitions = {}
-        
+
         rewards = {}
 
         reward_model = pomdp.reward_models[reward_model_name]
@@ -458,9 +458,9 @@ class POMDPFamiliesSynthesis:
         denom = pc.FactorizedPolynomial(pc.Rational(1))
 
         ndi = pomdp.nondeterministic_choice_indices
-        
+
         o_to_a = copy.deepcopy(pomdp_sketch.observation_to_actions)
-        
+
         # For UNION compatibility
         if self.union:
             init_state = pomdp.states[pomdp.initial_states[0]]
@@ -507,9 +507,6 @@ class POMDPFamiliesSynthesis:
                             states.add(tMC)
                             act_tup = (n, o, quotient_action)
                             mem_tup = (n, o, m)
-                            
-                            # if o == init_obs:
-                                # print("HERE:", f"s{s}, n{n}, o{o}, a{a}, m{m}, t{t}")
 
                             if sanity_checks: 
                                 assert (sMC, tMC, a) not in seen, (sMC, tMC, seen)
@@ -539,6 +536,13 @@ class POMDPFamiliesSynthesis:
                                     counter += 1
 
                                 action_function_params[act_tup] = act_param
+
+                            if self.union and o == init_obs:
+                                if m != n:
+                                    mem_param = pc.Rational(0)
+                                else:
+                                    mem_param = pc.Rational(1)
+                                memory_function_params[mem_tup] = mem_param
 
                             if mem_tup in memory_function_params:
                                 mem_param = memory_function_params[mem_tup]
@@ -576,13 +580,13 @@ class POMDPFamiliesSynthesis:
                         rewards[sMC] += pc.Polynomial(action_function_params[(n, o, quotient_action)]) * pc.Rational(float(reward))
                     else:
                         rewards[sMC] = pc.Polynomial(action_function_params[(n, o, quotient_action)]) * pc.Rational(float(reward))
-        
+
         if self.use_softmax:
             probabilistic_resolution = self.resolution_to_softmax(action_function_params, memory_function_params, parameter_resolution, num_nodes)
             resolve = probabilistic_resolution
         else:
             resolve = resolution
-        
+
         cache = pycarl.cln.cln._FactorizationCache()
         for s, next_states in sorted(pmc_transitions.items(), key = lambda x : x[0]):
             if sanity_checks:
@@ -605,9 +609,9 @@ class POMDPFamiliesSynthesis:
                     assert probability_function.evaluate(resolve) > 0 and probability_function.evaluate(resolve) <= 1
 
         del pmc_transitions
-        
+
         gc.collect()
-        
+
         print("Building pDTMC transition matrix:")
         p_matrix = builder.build()
         print("Done.")
@@ -621,20 +625,20 @@ class POMDPFamiliesSynthesis:
         def print_params(params_dict : dict) -> None:
             for key, var in sorted(params_dict.items()):
                 print(key, var)
-        
+
         labelling = stormpy.storage.StateLabeling(len(states))
-        
+
         for label, states in labeling.items():
             labelling.add_label(label)
             for s in states:
                 labelling.add_label_to_state(label, s)
 
         pmc_reward_model = stormpy.storage.SparseParametricRewardModel(optional_state_reward_vector=[r for r in rewards.values()])
-        
+
         del rewards
-        
+
         components = stormpy.storage.SparseParametricModelComponents(p_matrix, labelling, reward_models={reward_model_name : pmc_reward_model})
-        
+
         del p_matrix
         
         pmc = stormpy.storage.SparseParametricDtmc(components)
@@ -664,7 +668,10 @@ class POMDPFamiliesSynthesis:
                 if node_params == []:
                     continue
                 memory_parameter_values = np.array([float(parameter_resolution[var]) for var in node_params if var in parameter_resolution])
-                softmax_memory_probs = stablesoftmax(np.array([float(parameter_resolution[var]) for var in node_params]))
+                if memory_parameter_values.size == 0:
+                    continue
+                softmax_memory_probs = stablesoftmax(memory_parameter_values)
+                # softmax_memory_probs = stablesoftmax(np.array([float(parameter_resolution[var]) for var in node_params]))
                 assert math.isclose(sum(softmax_memory_probs), 1)
                 for var, softmax_prob in zip(node_params, softmax_memory_probs):
                     assert softmax_prob > 0 and softmax_prob <= 1, (softmax_memory_probs, memory_parameter_values)
@@ -692,7 +699,14 @@ class POMDPFamiliesSynthesis:
                 if node_params == []:
                     continue
 
-                softmax_memory_probs = stablesoftmax(np.array([float(parameter_resolution[var]) for var in node_params]))
+                if self.union:
+                    memory_parameter_values = np.array([float(parameter_resolution[var]) for var in node_params if var in parameter_resolution])
+                    if memory_parameter_values.size == 0:
+                        continue
+                else:
+                    memory_parameter_values = np.array([float(parameter_resolution[var]) for var in node_params])
+
+                softmax_memory_probs = stablesoftmax(memory_parameter_values)
 
                 for var, softmax_prob in zip(node_params, softmax_memory_probs):
                     softmax_grad[var] = sum([gradients[var_j] * ((softmax_prob * (1 - softmax_prob_j)) if var == var_j else (-softmax_prob * softmax_prob_j)) for var_j, softmax_prob_j in zip(node_params, softmax_memory_probs) if var_j in gradients])

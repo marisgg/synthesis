@@ -189,7 +189,13 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
         # the last observation is the fresh one for the fresh initial state
         # get the initial memory node set from this fres initial state
         assert fsc.num_observations == gd.pomdp_sketch.num_observations+1
-        initial_node = fsc.update_function[0][-1]
+        if fsc.is_deterministic:
+            initial_node = fsc.update_function[0][-1]
+        else:
+            possible_initial_nodes = list(fsc.update_function[0][-1].keys())
+            assert len(possible_initial_nodes) == 1
+            initial_node = possible_initial_nodes[0]
+            assert initial_node == 0
         print(initial_node, fsc.action_function[0][-1], fsc.action_function[1][-1])
 
         # get rid of the fresh observation
@@ -198,33 +204,34 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
             fsc.update_function[node] = fsc.update_function[node][:-1]
         fsc.num_observations -= 1
 
-        # fix possibly dummy actions
-        # for node in range(fsc.num_nodes):
-        #     for obs in range(fsc.num_observations):
-        #         action = fsc.action_function[node][obs]
-        #         if action is None:
-        #             continue
-        #         action_label = fsc.action_labels[action]
-        #         true_action_label = observation_action_to_true_action[obs][action_label]
-        #         fsc.action_function[node][obs] = fsc.action_labels.index(true_action_label)
+        if fsc.is_deterministic:
+            # fix possibly dummy actions
+            # for node in range(fsc.num_nodes):
+            #     for obs in range(fsc.num_observations):
+            #         action = fsc.action_function[node][obs]
+            #         if action is None:
+            #             continue
+            #         action_label = fsc.action_labels[action]
+            #         true_action_label = observation_action_to_true_action[obs][action_label]
+            #         fsc.action_function[node][obs] = fsc.action_labels.index(true_action_label)
 
-        # fill actions for unreachable observations
-        for node in range(fsc.num_nodes):
-            for obs in range(fsc.num_observations):
-                if fsc.action_function[node][obs] is None:
-                    available_action = gd.pomdp_sketch.observation_to_actions[obs][0]
-                    available_action_label = gd.pomdp_sketch.action_labels[available_action]
-                    fsc.action_function[node][obs] = fsc.action_labels.index(available_action_label)
+            # fill actions for unreachable observations
+            for node in range(fsc.num_nodes):
+                for obs in range(fsc.num_observations):
+                    if fsc.action_function[node][obs] is None:
+                        available_action = gd.pomdp_sketch.observation_to_actions[obs][0]
+                        available_action_label = gd.pomdp_sketch.action_labels[available_action]
+                        fsc.action_function[node][obs] = fsc.action_labels.index(available_action_label)
 
-        # make 0 the initial node and reorder the actions
-        node_order = list(range(fsc.num_nodes))
-        node_order[0] = initial_node
-        node_order[initial_node] = 0
-        fsc.reorder_nodes(node_order)
-        fsc.reorder_actions(gd.pomdp_sketch.action_labels)
-        fsc.check(gd.pomdp_sketch.observation_to_actions)
+            # make 0 the initial node and reorder the actions
+            node_order = list(range(fsc.num_nodes))
+            node_order[0] = initial_node
+            node_order[initial_node] = 0
+            fsc.reorder_nodes(node_order)
+            fsc.reorder_actions(gd.pomdp_sketch.action_labels)
+            fsc.check(gd.pomdp_sketch.observation_to_actions)
 
-        fsc.make_stochastic()
+            fsc.make_stochastic()
 
         dtmc_sketch = gd.get_dtmc_sketch(fsc)
 
