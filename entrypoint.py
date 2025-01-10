@@ -310,7 +310,4 @@ def run_parallel_extreme_large():
     with multiprocessing.Pool(MAX_THREADS) as p:
         p.starmap(run_extreme, tasks)
 
-# run_parallel_extreme_large()
-# run_union(ROVER, method=Method.GRADIENT, num_assignments=2)
-# run_lineplot_experiment(AVOID, )
-run_family_experiment_for_lineplot(AVOID, 2, memory_model=None, timeout=60, seed=12)
+run_parallel_extreme_large()
