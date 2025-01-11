@@ -36,6 +36,9 @@ def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model
             'fsc' : fsc
         }
     
+    if memory_model is not None:
+        timeout = (timeout - SUBFAMILY_SIZE * SAYNT_MEMORY_MODEL_TIMEOUT)
+    
     # Don't need to necessarily run below:
 
     # gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=False)
@@ -93,18 +96,25 @@ def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, n
     if determine_memory_model:
         memory_model = gd.determine_memory_model_from_assignments(subfamily_assigments, hole_combinations, max_num_nodes=num_nodes, timeout=SAYNT_MEMORY_MODEL_TIMEOUT)
         num_nodes = int(max(memory_model))
+        gd_timeout = (timeout - SUBFAMILY_SIZE * SAYNT_MEMORY_MODEL_TIMEOUT)
+    else:
+        gd_timeout = timeout
+    
+    standard_timeout = timeout
 
     dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/subfamsize{subfamily_size}/seed{seed}"
     os.makedirs(dr, exist_ok=True)
 
     for method in baselines:
+        
+        sub_exp_timeout = (gd_timeout if method.value == Method.GRADIENT.value else standard_timeout) // subfamily_size
 
-        subfamily_other_results = gd.experiment_on_subfamily(subfamily_assigments, hole_combinations, num_nodes, method, memory_model=memory_model, num_iters=num_iters, timeout=timeout, evaluate_on_whole_family=True)
+        subfamily_other_results = gd.experiment_on_subfamily(subfamily_assigments, hole_combinations, num_nodes, method, memory_model=memory_model, num_iters=num_iters, timeout=sub_exp_timeout, evaluate_on_whole_family=True)
 
         with open(f"{dr}/subfam-{method.name.lower()}.pickle", 'wb') as handle:
             pickle.dump(subfamily_other_results, handle)
 
-    best_gd_fsc, subfamily_gd_best_value = gd.run_gradient_descent_on_family(num_iters, num_nodes, subfamily_assigments, timeout=subfamily_size*timeout, memory_model=memory_model)
+    best_gd_fsc, subfamily_gd_best_value = gd.run_gradient_descent_on_family(num_iters, num_nodes, subfamily_assigments, timeout=gd_timeout, memory_model=memory_model)
     print(subfamily_gd_best_value)
 
     dtmc_sketch = gd.get_dtmc_sketch(best_gd_fsc)
@@ -179,6 +189,7 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
         if determine_memory_model:
             memory_model = gd.determine_memory_model_from_assignments(assignments, hole_combinations, max_num_nodes=num_nodes, timeout=SAYNT_MEMORY_MODEL_TIMEOUT)
             num_nodes = int(max(memory_model))
+            timeout = (timeout - num_assignments * SAYNT_MEMORY_MODEL_TIMEOUT)
         value, resolution, action_function_params, memory_function_params, *_ = gd.gradient_descent_on_single_pomdp(union_pomdp, int(1e30) if timeout else 1000, num_nodes, timeout=timeout, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={}, memory_model=memory_model)
         fsc = gd.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, gd.nO, gd.pomdp_sketch.observation_to_actions)
     else:
@@ -266,7 +277,7 @@ def run_lineplot_experiment(env, seed=SEED, num_samples=SUBFAMILY_SIZE, num_node
 
 def run_heatmap_experiment(env, seed=SEED, num_samples=SUBFAMILY_SIZE, num_nodes=MAX_NUM_NODES, timeout=TIMEOUT):
     try:
-        run_subfamily_for_heatmap(env, timeout=timeout//num_samples, subfamily_size=num_samples, baselines=[Method.SAYNT, Method.GRADIENT], num_nodes=num_nodes, determine_memory_model=True, stratified=True, seed=seed)
+        run_subfamily_for_heatmap(env, timeout=timeout, subfamily_size=num_samples, baselines=[Method.SAYNT, Method.GRADIENT], num_nodes=num_nodes, determine_memory_model=True, stratified=True, seed=seed)
     except Exception as e:
         print("SUBFAMILY EXPERIMENT FAILED FOR", env, seed)
         print(e)
