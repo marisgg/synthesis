@@ -78,7 +78,7 @@ class POMDPFamiliesSynthesis:
         self.current_values = []
         self.current_values_plot_times = []
         
-        self.burnin_iterations = 1
+        self.burnin_iterations = 5
         
         self.dynamic_memory = dynamic_memory
         
