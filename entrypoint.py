@@ -285,7 +285,7 @@ def run_heatmap_experiment(env, seed=SEED, num_samples=SUBFAMILY_SIZE, num_nodes
 
 def run_union_experiment(env, seed=SEED, num_samples=SUBFAMILY_SIZE, num_nodes=MAX_NUM_NODES, timeout=TIMEOUT, method=Method.SAYNT):
     try:
-        run_union(env, method=method, timeout=timeout, num_assignments=num_samples, stratified=True, seed=seed, nodes=num_nodes)
+        run_union(env, method=method, timeout=timeout, num_assignments=num_samples, stratified=True, seed=seed, num_nodes=num_nodes)
     except Exception as e:
         print("UNION EXPERIMENT FAILED FOR", env, seed, method)
         print(e)
@@ -317,7 +317,17 @@ def run_extreme(f, env, seed):
 
 def run_parallel_extreme_large():
     assert MAX_THREADS <= multiprocessing.cpu_count()
-    tasks = itertools.product([run_lineplot_experiment, run_heatmap_experiment, functools.partial(run_union_experiment, method=Method.SAYNT), functools.partial(run_union_experiment, method=Method.GRADIENT)], ENVS, range(2,12))
+    tasks = itertools.product(
+        [
+            run_lineplot_experiment,
+            run_heatmap_experiment,
+            functools.partial(run_union_experiment, method=Method.SAYNT),
+            functools.partial(run_union_experiment, method=Method.GRADIENT)
+        ],
+        ENVS,
+        range(2,12)
+    )
+
     with multiprocessing.Pool(MAX_THREADS) as p:
         p.starmap(run_extreme, tasks)
 
