@@ -158,6 +158,21 @@ class POMDPFamiliesSynthesis:
                 observation_action_to_true_action[obs][action_label] = true_action_label
         return pomdp,observation_action_to_true_action
 
+    def random_fsc(self, num_nodes):
+        num_obs = self.pomdp_sketch.num_observations
+        fsc = paynt.quotient.fsc.FSC(num_nodes, num_obs)
+        # action function is of type NxZ -> Distr(Act)
+        for n in range(num_nodes):
+            for z in range(num_obs):
+                actions = self.pomdp_sketch.observation_to_actions[z]
+                fsc.action_function[n][z] = { action:1/len(actions) for action in actions }
+        # memory update function is of type NxZ -> Distr(N) and is posterior-unaware
+        for n in range(num_nodes):
+            for z in range(num_obs):
+                actions = self.pomdp_sketch.observation_to_actions[z]
+                fsc.update_function[n][z] = { n_new:1/num_nodes for n_new in range(num_nodes) }
+        return fsc
+
     def solve_pomdp_paynt(self, pomdp, specification, k, timeout=1):
         pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, specification)
         pomdp_quotient.set_imperfect_memory_size(k)
@@ -253,22 +268,6 @@ class POMDPFamiliesSynthesis:
         synthesizer.run(optimum_threshold=None)
         # assert synthesizer.storm_control.latest_paynt_result_fsc is not None
         fsc = synthesizer.storm_control.latest_paynt_result_fsc
-        return fsc
-
-    def random_fsc(self, pomdp_sketch, num_nodes):
-        num_obs = pomdp_sketch.num_observations
-        fsc = paynt.quotient.fsc.FSC(num_nodes, num_obs)
-        # action function if of type NxZ -> Distr(Act)
-        for n in range(num_nodes):
-            for z in range(num_obs):
-                actions = pomdp_sketch.observation_to_actions[z]
-                fsc.action_function[n][z] = { action:1/len(actions) for action in actions }
-        # memory update function is of type NxZ -> Distr(N) and is posterior-aware
-        # note: this is currently inconsistent with definitions in paynt.quotient.fsc.FSC, but let's see how this works
-        for n in range(num_nodes):
-            for z in range(num_obs):
-                actions = pomdp_sketch.observation_to_actions[z]
-                fsc.update_function[n][z] = { n_new:1/num_nodes for n_new in range(num_nodes) }
         return fsc
     
     def create_subfamily(self, hole_combinations):
@@ -379,10 +378,6 @@ class POMDPFamiliesSynthesis:
 
         nO = self.pomdp_sketch.num_observations
 
-        dummy = []
-        
-        pomdps = []
-
         for i, assignment in enumerate(hole_assignments_to_test):
             
             if method.value == method.GRADIENT.value:
@@ -391,7 +386,6 @@ class POMDPFamiliesSynthesis:
                 fsc = self.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, nO, self.pomdp_sketch.observation_to_actions)
             elif method.value > method.GRADIENT.value:
                 pomdp = self.pomdp_sketch.build_pomdp(assignment)
-                pomdps.append(pomdp) 
                 # assert that observation classes are preserved
                 for state in range(pomdp.model.nr_states):
                     quotient_state = pomdp.quotient_state_map[state]

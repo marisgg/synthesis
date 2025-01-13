@@ -23,7 +23,14 @@ def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model
     dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/seed{seed}/"
     os.makedirs(dr, exist_ok=True)
     results = {}
-    
+
+    if os.path.isfile(f"{dr}/gd-experiment.pickle"):
+        if OVERWRITE_EXISTING_RESULTS:
+            print("WHOLE FAMILY EXPERIMENT EXISTS FOR", project_path, seed, Method.GRADIENT.name.lower(), ". OVERWRITING!")
+        else:
+            print("WHOLE FAMILY EXPERIMENT EXISTS FOR", project_path, seed, Method.GRADIENT.name.lower(), ". SKIPPING!")
+            return
+
     def store_results(gd : POMDPFamiliesSynthesis, seed : int, fsc : paynt.quotient.fsc.FSC, value : float):
         return {
             'family_trace' : gd.family_trace,
@@ -35,10 +42,10 @@ def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model
             'best_worst_value' : value,
             'fsc' : fsc
         }
-    
+
     if memory_model is not None:
         timeout = (timeout - SUBFAMILY_SIZE * SAYNT_MEMORY_MODEL_TIMEOUT)
-    
+
     # Don't need to necessarily run below:
 
     # gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=False)
@@ -48,9 +55,9 @@ def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model
 
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=True, seed=seed)
     fsc, value = gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, memory_model=memory_model, random_selection=True)
-    
+
     results['gd-random'] = store_results(gd, seed, fsc, value)
-    
+
     with open(f"{dr}/gd-experiment.pickle", 'wb') as handle:
         pickle.dump(results, handle)
 
@@ -58,7 +65,7 @@ def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model
     fsc, value = gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, memory_model=memory_model)
 
     results['gd-normal'] = store_results(gd, seed, fsc, value)
-    
+
     results['memory_model'] = memory_model
 
     with open(f"{dr}/gd-experiment.pickle", 'wb') as handle:
@@ -78,35 +85,42 @@ def run_family(project_path, num_nodes = 2, memory_model = None, dynamic_memory=
 
 def run_family_softmax(project_path, num_nodes = 2, memory_model = None, dynamic_memory=False, seed=11, max_iters=1000, **kwargs):
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, dynamic_memory=dynamic_memory, seed=seed)
-    gd.run_gradient_descent_on_family(max_iters, num_nodes, memory_model=memory_model, **kwargs)
+    gd.run_gradient_descent_on_family(max_iters, num_nodes, memory_model=memory_model, **kwargs)    
 
 def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2, memory_model = None, baselines = [Method.GRADIENT, Method.SAYNT], seed=11, stratified=True, determine_memory_model=True):
+    dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/subfamsize{subfamily_size}/seed{seed}"
+    os.makedirs(dr, exist_ok=True)
+
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, seed=seed)
     subfamily_size = min(subfamily_size, gd.pomdp_sketch.family.size)
     if stratified:
         subfamily_assigments, hole_combinations = gd.stratified_subfamily_sampling(subfamily_size, seed=seed)
     else:
         subfamily_assigments, hole_combinations = gd.create_random_subfamily(subfamily_size)
-    
+
     if timeout:
         num_iters = int(1e30)
     else:
         num_iters = 1000
-    
+
     if determine_memory_model:
         memory_model = gd.determine_memory_model_from_assignments(subfamily_assigments, hole_combinations, max_num_nodes=num_nodes, timeout=SAYNT_MEMORY_MODEL_TIMEOUT)
         num_nodes = int(max(memory_model))
         gd_timeout = (timeout - SUBFAMILY_SIZE * SAYNT_MEMORY_MODEL_TIMEOUT)
     else:
         gd_timeout = timeout
-    
+
     standard_timeout = timeout
 
-    dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/subfamsize{subfamily_size}/seed{seed}"
-    os.makedirs(dr, exist_ok=True)
-
     for method in baselines:
-        
+
+        if os.path.isfile(f"{dr}/subfam-{method.name.lower()}.pickle"):
+            if OVERWRITE_EXISTING_RESULTS:
+                print("SUBFAMILY EXPERIMENT EXISTS FOR", project_path, seed, method.name.lower(), ". OVERWRITING!")
+            else:
+                print("SUBFAMILY EXPERIMENT EXISTS FOR", project_path, seed, method.name.lower(), ". SKIPPING!")
+                continue
+
         sub_exp_timeout = (gd_timeout if method.value == Method.GRADIENT.value else standard_timeout) // subfamily_size
 
         subfamily_other_results = gd.experiment_on_subfamily(subfamily_assigments, hole_combinations, num_nodes, method, memory_model=memory_model, num_iters=num_iters, timeout=sub_exp_timeout, evaluate_on_whole_family=True)
@@ -139,6 +153,16 @@ def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, n
     return memory_model
 
 def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, num_nodes=2, stratified=True, seed=11, determine_memory_model = True):
+    dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/union/seed{seed}"
+    os.makedirs(dr, exist_ok=True)
+    
+    if os.path.isfile(f"{dr}/union-{method.name.lower()}.pickle"):
+        if OVERWRITE_EXISTING_RESULTS:
+            print("UNION EXPERIMENT EXISTS FOR", project_path, seed, method.name.lower(), ". OVERWRITING!")
+        else:
+            print("UNION EXPERIMENT EXISTS FOR", project_path, seed, method.name.lower(), ". SKIPPING!")
+            return
+    
     gd : POMDPFamiliesSynthesis = POMDPFamiliesSynthesis(project_path, use_softmax=True, learning_rate=0.1, steps=1, use_momentum=True, union=True, seed=seed)
 
     if stratified:
@@ -155,9 +179,6 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
         pomdps.append(pomdp)
         # pomdp_maps.append(true_action_map)
         # print(true_action_map)
-        
-    dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/union/seed{seed}"
-    os.makedirs(dr, exist_ok=True)
 
     # make sure that all POMDPs have the same action mapping so we can store only one copy
     observation_action_to_true_action = []
