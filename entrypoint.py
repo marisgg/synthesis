@@ -104,8 +104,8 @@ def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, n
         num_iters = 1000
 
     if determine_memory_model:
-        # memory_model = gd.determine_memory_model_from_assignments(subfamily_assigments, hole_combinations, max_num_nodes=num_nodes, timeout=SAYNT_MEMORY_MODEL_TIMEOUT)
-        memory_model = [num_nodes for obs in range(gd.nO)]
+        memory_model = gd.determine_memory_model_from_assignments(subfamily_assigments, hole_combinations, max_num_nodes=num_nodes, timeout=SAYNT_MEMORY_MODEL_TIMEOUT)
+        # memory_model = [num_nodes for obs in range(gd.nO)]
         num_nodes = int(max(memory_model))
         gd_timeout = (timeout - SUBFAMILY_SIZE * SAYNT_MEMORY_MODEL_TIMEOUT)
     else:
