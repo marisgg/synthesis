@@ -241,7 +241,8 @@ class POMDPFamiliesSynthesis:
         return fsc
     
     def solve_pomdp_saynt_hotfix(self, hole_assignment, timeout):
-        filename = f'/tmp/{os.getpid()}-{self.project_path.replace("/",'-')}-{time.time()}-temp-fsc.pickle'
+        replaced = self.project_path.replace("/",'-')
+        filename = f'/tmp/{os.getpid()}-{replaced}-{time.time()}-temp-fsc.pickle'
         print(hole_assignment)
         result = subprocess.run(["python3", "saynt_call.py", str(tuple(hole_assignment)), str(timeout), self.project_path, filename], timeout=10*timeout, capture_output=True)
         if result.returncode == 0:

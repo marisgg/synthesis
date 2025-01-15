@@ -104,7 +104,8 @@ def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, n
         num_iters = 1000
 
     if determine_memory_model:
-        memory_model = gd.determine_memory_model_from_assignments(subfamily_assigments, hole_combinations, max_num_nodes=num_nodes, timeout=SAYNT_MEMORY_MODEL_TIMEOUT)
+        # memory_model = gd.determine_memory_model_from_assignments(subfamily_assigments, hole_combinations, max_num_nodes=num_nodes, timeout=SAYNT_MEMORY_MODEL_TIMEOUT)
+        memory_model = [num_nodes for obs in range(gd.nO)]
         num_nodes = int(max(memory_model))
         gd_timeout = (timeout - SUBFAMILY_SIZE * SAYNT_MEMORY_MODEL_TIMEOUT)
     else:
@@ -282,10 +283,11 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
         'seed' : seed,
         'hole_combinations' : hole_combinations
     }
-    
+
     print(project_path.split('/')[-1], "Assignments:", assignment_values, 'family value:', family_value)
     with open(f"{dr}/union-{method.name.lower()}.pickle", 'wb') as handle:
         pickle.dump(results, handle)
+
 
 def run_lineplot_experiment(env, seed=SEED, num_samples=SUBFAMILY_SIZE, num_nodes=MAX_NUM_NODES, timeout=TIMEOUT):
     try:
@@ -299,6 +301,7 @@ def run_lineplot_experiment(env, seed=SEED, num_samples=SUBFAMILY_SIZE, num_node
 def run_heatmap_experiment(env, seed=SEED, num_samples=SUBFAMILY_SIZE, num_nodes=MAX_NUM_NODES, timeout=TIMEOUT):
     try:
         run_subfamily_for_heatmap(env, timeout=timeout, subfamily_size=num_samples, baselines=[Method.SAYNT, Method.GRADIENT], num_nodes=num_nodes, determine_memory_model=True, stratified=True, seed=seed)
+        # run_subfamily_for_heatmap(env, timeout=timeout, subfamily_size=num_samples, baselines=[Method.GRADIENT], num_nodes=num_nodes, determine_memory_model=True, stratified=True, seed=seed)
     except Exception as e:
         print("SUBFAMILY EXPERIMENT FAILED FOR", env, seed)
         print(e)
@@ -353,3 +356,5 @@ def run_parallel_extreme_large():
         p.starmap(run_extreme, tasks)
 
 run_parallel_extreme_large()
+
+# run_heatmap_experiment(ILLUSTRATIVE)
