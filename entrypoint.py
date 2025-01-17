@@ -212,6 +212,8 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
             memory_model = gd.determine_memory_model_from_assignments(assignments, hole_combinations, max_num_nodes=num_nodes, timeout=SAYNT_MEMORY_MODEL_TIMEOUT)
             num_nodes = int(max(memory_model))
             timeout = (timeout - num_assignments * SAYNT_MEMORY_MODEL_TIMEOUT)
+        else:
+            memory_model = None
         value, resolution, action_function_params, memory_function_params, *_ = gd.gradient_descent_on_single_pomdp(union_pomdp, int(1e30) if timeout else 1000, num_nodes, timeout=timeout, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={}, memory_model=memory_model)
         fsc = gd.parameters_to_paynt_fsc(action_function_params, memory_function_params, resolution, num_nodes, gd.nO, gd.pomdp_sketch.observation_to_actions)
     else:
@@ -233,7 +235,6 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
             assert len(possible_initial_nodes) == 1
             initial_node = possible_initial_nodes[0]
             assert initial_node == 0
-        print(initial_node, fsc.action_function[0][-1], fsc.action_function[1][-1])
 
         # get rid of the fresh observation
         for node in range(fsc.num_nodes):
@@ -356,5 +357,3 @@ def run_parallel_extreme_large():
         p.starmap(run_extreme, tasks)
 
 run_parallel_extreme_large()
-
-# run_heatmap_experiment(ILLUSTRATIVE)
