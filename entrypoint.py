@@ -44,7 +44,7 @@ def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model
         }
 
     if memory_model is not None:
-        timeout = (timeout - SUBFAMILY_SIZE * SAYNT_MEMORY_MODEL_TIMEOUT)
+        timeout = (timeout - SAYNT_MEMORY_MODEL_SUBFAM_SIZE * SAYNT_MEMORY_MODEL_TIMEOUT)
 
     # Don't need to necessarily run below:
 
@@ -104,10 +104,10 @@ def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, n
         num_iters = 1000
 
     if determine_memory_model:
-        memory_model = gd.determine_memory_model_from_assignments(subfamily_assigments, hole_combinations, max_num_nodes=num_nodes, timeout=SAYNT_MEMORY_MODEL_TIMEOUT)
-        # memory_model = [num_nodes for obs in range(gd.nO)]
+        memory_model_subfamily_assignments, memory_model_hole_combinations = gd.stratified_subfamily_sampling(SAYNT_MEMORY_MODEL_SUBFAM_SIZE, seed=seed) if stratified else gd.create_random_subfamily(SAYNT_MEMORY_MODEL_SUBFAM_SIZE)
+        memory_model = gd.determine_memory_model_from_assignments(memory_model_subfamily_assignments, memory_model_hole_combinations, max_num_nodes=num_nodes, timeout=SAYNT_MEMORY_MODEL_TIMEOUT)
         num_nodes = int(max(memory_model))
-        gd_timeout = (timeout - SUBFAMILY_SIZE * SAYNT_MEMORY_MODEL_TIMEOUT)
+        gd_timeout = (timeout - SAYNT_MEMORY_MODEL_SUBFAM_SIZE * SAYNT_MEMORY_MODEL_TIMEOUT)
     else:
         gd_timeout = timeout
 
@@ -209,9 +209,10 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
         fsc = gd.solve_pomdp_paynt(union_pomdp, gd.pomdp_sketch.specification.copy(), num_nodes, timeout=timeout)
     elif method == Method.GRADIENT:
         if determine_memory_model:
-            memory_model = gd.determine_memory_model_from_assignments(assignments, hole_combinations, max_num_nodes=num_nodes, timeout=SAYNT_MEMORY_MODEL_TIMEOUT)
+            memory_model_subfamily_assignments, memory_model_hole_combinations = gd.stratified_subfamily_sampling(SAYNT_MEMORY_MODEL_SUBFAM_SIZE, seed=seed) if stratified else gd.create_random_subfamily(SAYNT_MEMORY_MODEL_SUBFAM_SIZE)
+            memory_model = gd.determine_memory_model_from_assignments(memory_model_subfamily_assignments, memory_model_hole_combinations, max_num_nodes=num_nodes, timeout=SAYNT_MEMORY_MODEL_TIMEOUT)
             num_nodes = int(max(memory_model))
-            timeout = (timeout - num_assignments * SAYNT_MEMORY_MODEL_TIMEOUT)
+            timeout = (timeout - SAYNT_MEMORY_MODEL_SUBFAM_SIZE * SAYNT_MEMORY_MODEL_TIMEOUT)
         else:
             memory_model = None
         value, resolution, action_function_params, memory_function_params, *_ = gd.gradient_descent_on_single_pomdp(union_pomdp, int(1e30) if timeout else 1000, num_nodes, timeout=timeout, parameter_resolution={}, resolution={}, action_function_params={}, memory_function_params={}, memory_model=memory_model)
@@ -290,7 +291,7 @@ def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, 
         pickle.dump(results, handle)
 
 
-def run_lineplot_experiment(env, seed=SEED, num_samples=SUBFAMILY_SIZE, num_nodes=MAX_NUM_NODES, timeout=TIMEOUT):
+def run_lineplot_experiment(env, seed=SEED, num_samples=SAYNT_MEMORY_MODEL_SUBFAM_SIZE, num_nodes=MAX_NUM_NODES, timeout=TIMEOUT):
     try:
         memory_model = determine_memory_model_stratified(env, num_nodes=num_nodes, num_samples=num_samples, seed=seed)
         run_family_experiment_for_lineplot(env, max(memory_model), memory_model, max_iter=MAX_ITER, timeout=timeout, seed=seed)
