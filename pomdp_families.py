@@ -77,7 +77,12 @@ class POMDPFamiliesSynthesis:
 
         self.current_values = []
         self.current_values_plot_times = []
-        
+
+        self.gd_time = 0                # time spent on GD
+        self.pmc_construction_time = 0  # subset of self.gd_time
+
+        self.paynt_time = 0             # time spent on evaluation in Paynt
+
         self.burnin_iterations = 5
         
         self.dynamic_memory = dynamic_memory
@@ -735,7 +740,9 @@ class POMDPFamiliesSynthesis:
             memory_model = [num_nodes] * self.nO
             if self.union: # if running with union, use only a single memory node for the initial dummy observation.
                 memory_model[self.nO-1] = 1
+        pmc_tik = time.time()
         pmc, action_function_params, memory_function_params, resolution, parameter_resolution = self.construct_pmc(pomdp, self.pomdp_sketch, self.reward_model_name, num_nodes, distinct_parameters_for_final_probability=self.use_softmax, parameter_resolution=parameter_resolution, resolution=resolution, action_function_params=action_function_params, memory_function_params=memory_function_params, memory_model=memory_model)
+        self.pmc_construction_time += (time.time() - pmc_tik)
         current_parameters = list(pmc.collect_all_parameters())
         
         if self.use_softmax:
@@ -865,6 +872,7 @@ class POMDPFamiliesSynthesis:
                     self.family_trace.append(paynt_value)
                     if timeout:
                         self.plot_times.append(time.time() - tik)
+                        self.paynt_time += paynt_tok
                     if op(paynt_value, best_family_value):
                         best_fsc = fsc
                         best_family_value = paynt_value
@@ -912,7 +920,11 @@ class POMDPFamiliesSynthesis:
                         # resolution = {}
             
             # current_value, new_resolution, action_function_params, memory_function_params, new_parameter_resolution = self.gradient_descent_on_single_pomdp_from_hole_assignment(hole_assignment, 10 // self.gd_steps, num_nodes, action_function_params=action_function_params, memory_function_params=memory_function_params, resolution=resolution, parameter_resolution=parameter_resolution, memory_model=memory_model)
+            if timeout:
+                gd_tik = time.time()
             current_value, new_resolution, action_function_params, memory_function_params, new_parameter_resolution = self.gradient_descent_on_single_pomdp(pomdp, 10 // self.gd_steps, num_nodes, action_function_params=action_function_params, memory_function_params=memory_function_params, resolution=resolution, parameter_resolution=parameter_resolution, memory_model=memory_model)
+            if timeout:
+                self.gd_time += (time.time() - gd_tik)
             
             self.current_values.append(current_value)
             if timeout:

@@ -38,6 +38,11 @@ def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model
             'current_values' : gd.current_values,
             'current_values_plot_times' : gd.current_values_plot_times,
             'plot_times' : gd.plot_times,
+            'runtimes' : {
+                'time_spent_grad' : gd.gd_time,
+                'time_spent_grad_pmc_construction' : gd.pmc_construction_time,
+                'time_spent_eval' : gd.paynt_time
+            },
             'seed' : seed,
             'best_worst_value' : value,
             'fsc' : fsc
