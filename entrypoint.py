@@ -346,6 +346,24 @@ def run_parallel():
 def run_extreme(f, env, seed):
     f(env, seed=seed)
 
+def run_specific():
+    threads = 2
+    assert threads <= multiprocessing.cpu_count()
+    assert threads <= MAX_THREADS
+    tasks = itertools.product(
+        [
+            run_lineplot_experiment,
+            # run_heatmap_experiment,
+            # functools.partial(run_union_experiment, method=Method.SAYNT),
+            # functools.partial(run_union_experiment, method=Method.GRADIENT)
+        ],
+        [DPM, AVOID],
+        [11]
+    )
+
+    with multiprocessing.Pool(threads) as p:
+        p.starmap(run_extreme, tasks)
+
 def run_parallel_extreme_large():
     assert MAX_THREADS <= multiprocessing.cpu_count()
     tasks = itertools.product(
