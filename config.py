@@ -30,7 +30,7 @@ ACO = f"{BASE_SKETCH_DIR}/aco"
 INTERCEPT = f"{BASE_SKETCH_DIR}/intercept"
 
 # Can try various models.
-OBSTACLES_EIGHTH_THREE = f"{BASE_SKETCH_DIR}/obstacles-8-3"
+OBSTACLES_EIGHTH_THREE = f"{BASE_SKETCH_DIR}/obstacles-8-5"
 OBSTACLES_TEN_TWO = f"{BASE_SKETCH_DIR}/obstacles-10-2"
 AVOID = f"{BASE_SKETCH_DIR}/avoid"
 DPM = f"{BASE_SKETCH_DIR}/dpm"
