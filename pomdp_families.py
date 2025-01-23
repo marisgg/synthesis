@@ -379,7 +379,7 @@ class POMDPFamiliesSynthesis:
         fsc.is_deterministic = False
         return fsc
 
-    def experiment_on_subfamily(self, hole_assignments_to_test : list, hole_combinations : list, num_nodes : int, method : Method, timeout=15, evaluate_on_whole_family=False, **gd_kwargs):
+    def experiment_on_subfamily(self, hole_assignments_to_test : list, hole_combinations : list, num_nodes : int, method : Method, timeout=15, evaluate_on_whole_family=False, force_policy_deterministic=False, **gd_kwargs):
         results = {}
 
         nO = self.pomdp_sketch.num_observations
@@ -418,6 +418,8 @@ class POMDPFamiliesSynthesis:
                 else:
                     results[i] = (str(assignment), fsc, evaluations)
             else:
+                if force_policy_deterministic:
+                    fsc.force_dirac_via_maxprob()
                 dtmc_sketch = self.pomdp_sketch.build_dtmc_sketch(fsc, negate_specification=True)
                 one_by_one = paynt.synthesizer.synthesizer_onebyone.SynthesizerOneByOne(dtmc_sketch)
                 evaluations = {}

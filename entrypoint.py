@@ -92,7 +92,7 @@ def run_family_softmax(project_path, num_nodes = 2, memory_model = None, dynamic
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, dynamic_memory=dynamic_memory, seed=seed)
     gd.run_gradient_descent_on_family(max_iters, num_nodes, memory_model=memory_model, **kwargs)    
 
-def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2, memory_model = None, baselines = [Method.GRADIENT, Method.SAYNT], seed=11, stratified=True, determine_memory_model=True):
+def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2, memory_model = None, baselines = [Method.GRADIENT, Method.SAYNT], seed=11, stratified=True, determine_memory_model=True, force_policy_deterministic=False):
     dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/subfamsize{subfamily_size}/seed{seed}"
     os.makedirs(dr, exist_ok=True)
 
@@ -129,13 +129,16 @@ def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, n
 
         sub_exp_timeout = (gd_timeout if method.value == Method.GRADIENT.value else standard_timeout) // subfamily_size
 
-        subfamily_other_results = gd.experiment_on_subfamily(subfamily_assigments, hole_combinations, num_nodes, method, memory_model=memory_model, num_iters=num_iters, timeout=sub_exp_timeout, evaluate_on_whole_family=True)
+        subfamily_other_results = gd.experiment_on_subfamily(subfamily_assigments, hole_combinations, num_nodes, method, memory_model=memory_model, num_iters=num_iters, timeout=sub_exp_timeout, evaluate_on_whole_family=True, force_policy_deterministic=force_policy_deterministic)
 
         with open(f"{dr}/subfam-{method.name.lower()}.pickle", 'wb') as handle:
             pickle.dump(subfamily_other_results, handle)
 
     best_gd_fsc, subfamily_gd_best_value = gd.run_gradient_descent_on_family(num_iters, num_nodes, subfamily_assigments, timeout=gd_timeout, memory_model=memory_model)
     print(subfamily_gd_best_value)
+    
+    if force_policy_deterministic:
+        best_gd_fsc.force_dirac_via_maxprob()
 
     dtmc_sketch = gd.get_dtmc_sketch(best_gd_fsc)
 
@@ -412,3 +415,5 @@ def run_parallel_extreme_large_separate_calls():
         p.starmap(run_extreme, tasks)
 
 run_parallel_extreme_large()
+# run_subfamily_for_heatmap(ILLUSTRATIVE, timeout=EXAMPLE_TIMEOUT, subfamily_size=EXAMPLE_SUBFAMILY_SIZE, baselines=[Method.GRADIENT], num_nodes=2, determine_memory_model=False, stratified=True, seed=EXAMPLE_SEED, force_policy_deterministic=False)
+
