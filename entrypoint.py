@@ -415,5 +415,5 @@ def run_parallel_extreme_large_separate_calls():
         p.starmap(run_extreme, tasks)
 
 run_parallel_extreme_large()
-# run_subfamily_for_heatmap(ILLUSTRATIVE, timeout=EXAMPLE_TIMEOUT, subfamily_size=EXAMPLE_SUBFAMILY_SIZE, baselines=[Method.GRADIENT], num_nodes=2, determine_memory_model=False, stratified=True, seed=EXAMPLE_SEED, force_policy_deterministic=False)
+run_subfamily_for_heatmap(ILLUSTRATIVE, timeout=EXAMPLE_TIMEOUT, subfamily_size=EXAMPLE_SUBFAMILY_SIZE, baselines=[Method.GRADIENT], num_nodes=2, determine_memory_model=False, stratified=True, seed=EXAMPLE_SEED, force_policy_deterministic=False)
 
