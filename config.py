@@ -1,4 +1,4 @@
-MAX_THREADS = 18
+MAX_THREADS = 4
 
 BASE_OUTPUT_DIR = "./output/IJCAI"
 

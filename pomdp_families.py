@@ -17,7 +17,12 @@ from config import *
 import stormpy
 import stormpy.pomdp
 import stormpy.pars
-import pycarl
+try:
+    print("Experimental: Trying `import stormpy.pycarl as pycarl` for future compatibility's sake.")
+    import stormpy.pycarl as pycarl
+except:
+    print("That did not work. This is expected if using the precompiled Docker image. Proceedings with `import pycarl` as usual.")
+    import pycarl
 import stormpy.info
 
 if stormpy.info.storm_ratfunc_use_cln():
@@ -139,31 +144,10 @@ class POMDPFamiliesSynthesis:
         pomdp_sketch = paynt.parser.sketch.Sketch.load_sketch(sketch_path, properties_path)
         return pomdp_sketch
 
-    @DeprecationWarning
-    def assignment_to_pomdp(self, pomdp_sketch, assignment, restore_absorbing_states=True):
-        
-        pomdp = pomdp_sketch.build_pomdp(assignment).model
-        if restore_absorbing_states:
-            updated = payntbind.synthesis.restoreActionsInAbsorbingStates(pomdp)
-            if updated is not None: pomdp = updated
-        action_labels,_ = payntbind.synthesis.extractActionLabels(pomdp)
-        num_actions = len(action_labels)
-        pomdp,choice_to_true_action = payntbind.synthesis.enableAllActions(pomdp)
-        observation_action_to_true_action = [None]* pomdp.nr_observations
-        for state in range(pomdp.nr_states):
-            obs = pomdp.observations[state]
-            if observation_action_to_true_action[obs] is not None:
-                continue
-            observation_action_to_true_action[obs] = {}
-            choice_0 = pomdp.transition_matrix.get_row_group_start(state)
-            for action,action_label in enumerate(action_labels):
-                choice = choice_0+action
-                true_action = choice_to_true_action[choice]
-                true_action_label = action_labels[true_action]
-                observation_action_to_true_action[obs][action_label] = true_action_label
-        return pomdp,observation_action_to_true_action
-
     def random_fsc(self, num_nodes):
+        """
+        Initialize an FSC object with the uniform random policy.
+        """
         num_obs = self.pomdp_sketch.num_observations
         fsc = paynt.quotient.fsc.FSC(num_nodes, num_obs)
         # action function is of type NxZ -> Distr(Act)
@@ -179,9 +163,11 @@ class POMDPFamiliesSynthesis:
         return fsc
 
     def solve_pomdp_paynt(self, pomdp, specification, k, timeout=1):
+        """
+        Use PAYNT to find an FSC for a POMDP.
+        """
         pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, specification)
         pomdp_quotient.set_imperfect_memory_size(k)
-        # print(dir(pomdp_quotient), pomdp_quotient.action_labels_at_observation[0])#, pomdp_quotient.action_labels)
         synthesizer = paynt.synthesizer.synthesizer_ar.SynthesizerAR(pomdp_quotient)
         assignment = synthesizer.synthesize(timeout=timeout)
         assert assignment is not None
@@ -189,6 +175,9 @@ class POMDPFamiliesSynthesis:
         return fsc
 
     def parameters_to_paynt_fsc(self, action_function_params, memory_function_params, resolution, num_nodes, num_obs, observation_to_actions, memory_model = None):
+        """
+        Map the policy parameters phi and theta to an FSC object.
+        """
         
         if memory_model is None:
             memory_model = [num_nodes] * self.nO
@@ -246,6 +235,9 @@ class POMDPFamiliesSynthesis:
         return fsc
     
     def solve_pomdp_saynt_hotfix(self, hole_assignment, timeout):
+        """
+        Hotfix to enable running SAYNT multiple times on multiple (different) POMDPs: run in a fresh subprocess using the `saynt_call.py` helper script.
+        """
         replaced = self.project_path.replace("/",'-')
         filename = f'/tmp/{os.getpid()}-{replaced}-{time.time()}-temp-fsc.pickle'
         print(hole_assignment)
@@ -259,6 +251,9 @@ class POMDPFamiliesSynthesis:
         return fsc
 
     def solve_pomdp_saynt(self, pomdp, specification, k=5, timeout=10):
+        """
+        Run SAYNT on a POMDP, and retrieve the fully specified FSC that SAYNT found.
+        """
         pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, specification)
         storm_control = paynt.quotient.storm_pomdp_control.StormPOMDPControl()
         paynt_iter_timeout = min(timeout // 2, 9)
@@ -296,6 +291,9 @@ class POMDPFamiliesSynthesis:
         return self.create_subfamily(hole_combination_samples), hole_combination_samples
 
     def determine_memory_model_from_assignments(self, assignments : list, hole_combinations : list, max_num_nodes = 5, timeout=30):
+        """
+        Run the heuristic (using SAYNT) to determine a memory model for the given (sub)family assignments. This is executed apriori of an execution of rfPG or other GA baselines.
+        """
         print([str(a) for a in assignments])
         memory_models = []
         memory_model_matrix = np.zeros((len(assignments), self.nO), dtype=int)
@@ -321,6 +319,9 @@ class POMDPFamiliesSynthesis:
         return np.minimum(pointwise_max_memory_model, max_num_nodes).tolist()
     
     def memory_model_from_belief_exploration(self, assignment):
+        """
+        Similar to above, yet run just belief exploration instead of full Saynt (unused in paper).
+        """
         pomdp = self.pomdp_sketch.build_pomdp(assignment).model
         specification = self.pomdp_sketch.specification.copy()
         pomdp_quotient = paynt.quotient.pomdp.PomdpQuotient(pomdp, specification)
@@ -343,6 +344,9 @@ class POMDPFamiliesSynthesis:
         return memory_model
 
     def determine_memory_model_from_assignments_via_belief_exploration(self, assignments : list, max_num_nodes = 5):
+        """
+        Belief exploration for memory model subroutine (unused in paper).
+        """
         print([str(a) for a in assignments])
         memory_models = []
         memory_model_matrix = np.zeros((len(assignments), self.nO), dtype=int)
@@ -359,9 +363,12 @@ class POMDPFamiliesSynthesis:
         return np.minimum(pointwise_max_memory_model, max_num_nodes)
 
     def deterministic_fsc_to_stochastic_fsc(self, fsc):
+        """
+        Self-explanatory, map FSC with deterministic functions to a stochastic FSC with Dirac distributions.
+        """
         for n in range(fsc.num_nodes):
             for o in range(self.nO):
-                if o >= len(fsc.action_function[n]):
+                if o >= len(fsc.action_function[n]): # This observation is not specified in the FSC.
                     fsc.action_function[n].append({int(a) : 1 / len(self.pomdp_sketch.observation_to_actions[o]) for a in self.pomdp_sketch.observation_to_actions[o]})
                     fsc.update_function[n].append({int(m) : 1 / fsc.num_nodes for m in range(fsc.num_nodes)})
                 else:
@@ -380,6 +387,9 @@ class POMDPFamiliesSynthesis:
         return fsc
 
     def experiment_on_subfamily(self, hole_assignments_to_test : list, hole_combinations : list, num_nodes : int, method : Method, timeout=15, evaluate_on_whole_family=False, force_policy_deterministic=False, **gd_kwargs):
+        """
+        Single method to execute one of available methods on a subfamily and collect a bunch of data and statistics. 
+        """
         results = {}
 
         nO = self.pomdp_sketch.num_observations
@@ -445,6 +455,11 @@ class POMDPFamiliesSynthesis:
 
     # @profile
     def construct_pmc(self, pomdp, pomdp_sketch, reward_model_name, num_nodes, action_function_params = {}, memory_function_params = {}, resolution = {}, parameter_resolution = None, distinct_parameters_for_final_probability = False, sanity_checks = False, memory_model = None):
+        """
+        Construct a parametric Markov chain (pMC) from a POMDP model and FSC ingredients, intending to optimize the parameters of the pMC to optimize the parameters of the FSC on the POMDP.
+        
+        For more details on (the equivalence of) this construction, see for instance: Junges et al. (2018).
+        """
         if action_function_params == memory_function_params == resolution == {}:
             pycarl.clear_pools()
 

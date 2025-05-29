@@ -14,4 +14,4 @@ python3 setup.py develop
 
 # RUN
 cd ${VOLUME_DIR}
-python3 -m pip install scipy
+python3 -m pip install scipy==1.15.0

@@ -19,6 +19,9 @@ from config import *
 import pickle
 
 def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model=None, timeout=None, max_iter=1000, seed=11):
+    """
+    Run experiment to collect the performance of rfPG (used throughout the experiments) and the random GA baselines. 
+    """
 
     dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/seed{seed}/"
     os.makedirs(dr, exist_ok=True)
@@ -51,7 +54,7 @@ def run_family_experiment_for_lineplot(project_path, num_nodes = 2, memory_model
     if memory_model is not None:
         timeout = (timeout - SAYNT_MEMORY_MODEL_SUBFAM_SIZE * SAYNT_MEMORY_MODEL_TIMEOUT)
 
-    # Don't need to necessarily run below:
+    # Don't need to run below:
 
     # gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, use_momentum=False)
     # gd.run_gradient_descent_on_family(max_iter, num_nodes, timeout=timeout, memory_model=memory_model)
@@ -80,7 +83,6 @@ def determine_memory_model_stratified(project_path, num_nodes = 2, seed=11, num_
     gd = POMDPFamiliesSynthesis(project_path, use_softmax=True, steps=1, learning_rate=0.01, seed=seed)
     assignments, hole_combinations = gd.stratified_subfamily_sampling(num_samples, seed=seed)
     mem = gd.determine_memory_model_from_assignments(assignments, hole_combinations, max_num_nodes=num_nodes, timeout=SAYNT_MEMORY_MODEL_TIMEOUT)
-    # mem = gd.determine_memory_model_from_assignments_via_belief_exploration(assignments, max_num_nodes=num_nodes, timeout=SAYNT_MEMORY_MODEL_TIMEOUT)
     print(mem)
     return mem
 
@@ -93,6 +95,9 @@ def run_family_softmax(project_path, num_nodes = 2, memory_model = None, dynamic
     gd.run_gradient_descent_on_family(max_iters, num_nodes, memory_model=memory_model, **kwargs)    
 
 def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, num_nodes = 2, memory_model = None, baselines = [Method.GRADIENT, Method.SAYNT], seed=11, stratified=True, determine_memory_model=True, force_policy_deterministic=False):
+    """
+    Run experiments on the sampled subfamilies (baselines and rfPG-S).
+    """
     dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/subfamsize{subfamily_size}/seed{seed}"
     os.makedirs(dr, exist_ok=True)
 
@@ -162,6 +167,9 @@ def run_subfamily_for_heatmap(project_path, subfamily_size = 10, timeout = 60, n
     return memory_model
 
 def run_union(project_path, method=Method.SAYNT, timeout=10, num_assignments=5, num_nodes=2, stratified=True, seed=11, determine_memory_model = True):
+    """
+    Run experiments on the union POMDP (baselines).
+    """
     dr = f"{BASE_OUTPUT_DIR}/{project_path.split('/')[-1]}/union/seed{seed}"
     os.makedirs(dr, exist_ok=True)
     
@@ -414,6 +422,6 @@ def run_parallel_extreme_large_separate_calls():
     with multiprocessing.Pool(MAX_THREADS) as p:
         p.starmap(run_extreme, tasks)
 
-run_parallel_extreme_large()
 run_subfamily_for_heatmap(ILLUSTRATIVE, timeout=EXAMPLE_TIMEOUT, subfamily_size=EXAMPLE_SUBFAMILY_SIZE, baselines=[Method.GRADIENT], num_nodes=2, determine_memory_model=False, stratified=True, seed=EXAMPLE_SEED, force_policy_deterministic=False)
+run_parallel_extreme_large()
 
