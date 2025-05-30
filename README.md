@@ -1,51 +1,33 @@
-# PAYNT
+# rfPG: Robust Finite-Memory Policy Gradients for Hidden-Model POMDPs
 
-## Installation
+This repository contains the code and docker set-up to reproduce the experiments of the IJCAI 2025 paper: "rfPG: Robust Finite-Memory Policy Gradients for Hidden-Model POMDPs".
 
-## Docker (recommended and tested)
-
-Quick and easy. Install Docker, then, run:
-```
-docker run -dit -v "$(pwd):/opt/payntdev" --name IJCAI randriu/paynt:latest bash -c 'cd /opt/payntdev && bash setup.bash && python3 entrypoint.py'
-```
-
-Output will collect in the output folder specified in `config.py`, default is `./output/IJCAI`.
-
-To generate the plots, execute the Jupyter notebook `plots.ipynb`. Alternatively, convert it to Python code and execute as a script.
+## Experiments
 
 The lineplot and heatmap (enumeration) experiments take ~2 hours each. Each call to run on the union takes 1 hour each, thus 2 for both approaches. That makes 6 hours of experiments for 6 environments, totalling 36 hours if no parallelization is used. 
 
-### Manual (untested)
+Output will collect in the output folder specified in `config.py`, default is `./output/IJCAI`. Since we make use of a volume, the output will also appear in this repository when executed the experiments through the Docker environment.
 
-Install Paynt:
+Adapt `config.py` to set various global hyperparameters and experiments to run. Its constants are used in `entrypoint.py`.
 
-```shell
-git clone https://github.com/randriu/synthesis.git synthesis
-cd synthesis
-```
+To generate the plots, execute the Jupyter notebook `plots.ipynb`. Alternatively, convert it to Python code and execute as a script.
 
-PAYNT requires [Storm](https://github.com/moves-rwth/storm) and [Stormpy](https://github.com/moves-rwth/stormpy). If you have Stormpy installed (e.g. within a Python environment), PAYNT and its dependencies can be installed by
+## Installation
 
-```shell
-sudo apt install -y graphviz
-source ${VIRTUAL_ENV}/bin/activate
-pip3 install click z3-solver psutil graphviz
-cd payntbind
-python3 setup.py develop
-cd ..
-python3 paynt.py --help
-```
+### Docker with precompiled image (recommended and tested)
 
-If you do not have Stormpy installed, you can run the installation script `install.sh` to install Storm, Stormpy and other required dependencies (designed for Ubuntu-like systems with `apt`). Complete compilation might take up to an hour. The Python environment will be available in `prerequisistes/venv`:
+Download the docker image `rfpg.tar` from our [Zenodo repository](https://doi.org/10.5281/zenodo.15479643) and load it with, e.g., `docker load -i rfpg.tar`. Follow similar instructions for using `podman`. The image should appear as `localhost/rfpg:ijcai`. Adapt the instructions below accordingly if you load the image under a different name.
+
+Then, execute the following *in the root directory of this repository*:
 
 ```shell
-./install.sh
-source prerequisistes/venv/bin/activate
-python3 paynt.py --help
+docker run  -v "$(pwd):/opt/payntdev" --name YOURCONTAINERNAMEHERE localhost/rfpg:ijcai python3 entrypoint.py
 ```
 
-Run experiments with setup from `config.py`:
-```
-python3 entrypoint.py
+#### Docker with pull 
+
+Use helper script to build on top of the Paynt image we created. Quick and easy, but it *may break in the future*. Run the following *in the root directory of this repository*:
+```shell
+docker run -dit -v "$(pwd):/opt/payntdev" --name YOURCONTAINERNAMEHERE randriu/paynt:latest bash -c 'cd /opt/payntdev && bash setup.bash && python3 entrypoint.py'
 ```
 
