@@ -64,7 +64,7 @@ def stablesoftmax(x, temperature = 1) -> np.ndarray:
 
 class POMDPFamiliesSynthesis:
     
-    def __init__(self, project_path : str, seed : int = 11, use_softmax : bool = False, learning_rate = 0.001, minibatch_size = 256, steps = 10, use_momentum = True, dynamic_memory = False, union = False):
+    def __init__(self, project_path : str, seed : int = 11, use_softmax : bool = True, learning_rate = 0.1, minibatch_size = 256, steps = 10, use_momentum = True, dynamic_memory = False, union = False):
         random.seed(seed)
         np.random.seed(seed)
         
@@ -673,6 +673,9 @@ class POMDPFamiliesSynthesis:
         return pmc, action_function_params, memory_function_params, resolution, parameter_resolution
 
     def resolution_to_softmax(self, action_function_params, memory_function_params, parameter_resolution, num_nodes):
+        """
+        Apply a Softmax transformation to the parameter sets.
+        """
         probabilistic_resolution = {}
         for n in range(num_nodes):
             for o in range(self.nO):
@@ -707,6 +710,9 @@ class POMDPFamiliesSynthesis:
         return probabilistic_resolution
 
     def softmax_gradients(self, action_function_params, memory_function_params, parameter_resolution, num_nodes, gradients):
+        """
+        Compute the Softmax gradient by applying the chain rule; see also Section 4 of the paper.
+        """
         softmax_grad = {}
         for n in range(num_nodes):
             for o in range(self.nO):
@@ -753,6 +759,9 @@ class POMDPFamiliesSynthesis:
         return self.gradient_descent_on_single_pomdp(pomdp, num_iters, num_nodes, **kwargs)
 
     def gradient_descent_on_single_pomdp(self, pomdp, num_iters : int, num_nodes : int, action_function_params = {}, memory_function_params = {}, resolution = {}, parameter_resolution = None, timeout = None, memory_model = None):
+        """
+        This method governs the execution of GA/GD on a single POMDP.
+        """
         if memory_model is None:
             memory_model = [num_nodes] * self.nO
             if self.union: # if running with union, use only a single memory node for the initial dummy observation.
@@ -810,16 +819,14 @@ class POMDPFamiliesSynthesis:
                         new_parameter_resolution[p] = direction_operator(float(parameter_resolution[p]), self.lr * self.momentum[p])
                     else:
                         new_parameter_resolution[p] = direction_operator(float(parameter_resolution[p]), self.lr * self.clip_gradient(softmax_grads[p], doclip=True))
-                # parameter_resolution.update(new_parameter_resolution)
                 new_resolution = self.resolution_to_softmax(action_function_params, memory_function_params, new_parameter_resolution, num_nodes)
-                # resolution.update(new_resolution)
                 instantiator = stormpy.pars.PDtmcInstantiator(pmc)
                 instantiated_model = instantiator.instantiate(new_resolution)
                 result = stormpy.model_checking(instantiated_model, self.pomdp_sketch.get_property().property.raw_formula)
                 current_value = result.at(0)
                 parameter_resolution = new_parameter_resolution
                 resolution = new_resolution
-            else:
+            else: # Gradients directly on the parameters without softmax parameterization. Not fully supported.
                 try:
                     # wrapper.resetDynamicValues() # TODO
                     current_value, new_resolution = wrapper.stochasticGradientDescent(resolution)
@@ -840,6 +847,9 @@ class POMDPFamiliesSynthesis:
 
     
     def run_gradient_descent_on_family(self, num_iters : int, num_nodes : int, assignments : list = None, timeout : int = None, random_selection : bool = False, memory_model : list[int] = None):
+        """
+        The method to run rfPG on a (sub)family of POMDPs, i.e., on a HM-POMDP.
+        """
         current_value = None
         
         if self.dynamic_memory:
@@ -956,6 +966,9 @@ class POMDPFamiliesSynthesis:
         return best_fsc, best_family_value
 
     def get_values_on_subfamily(self, dtmc_sketch, assignments) -> np.ndarray:
+        """
+        One by one evaluation of the DTMCs from an FSC and a subfamily.
+        """
         synthesizer = paynt.synthesizer.synthesizer_onebyone.SynthesizerOneByOne(dtmc_sketch)
         evaluations = np.zeros(len(assignments))
         for j, family in enumerate(assignments):
@@ -969,6 +982,9 @@ class POMDPFamiliesSynthesis:
         return self.paynt_call(self.get_dtmc_sketch(fsc), **kwargs)
 
     def paynt_call(self, dtmc_sketch, assignments = None, artificial_upper_bound = None, random_selection = False) -> tuple[paynt.family.family.Family, float]:
+        """
+        Call Paynt: Evaluation through abstraction refinement on the quotient POMDP (see Section 4 of paper). Returns a worst-case hole assignment (POMDP) and its value.
+        """
         if assignments is None:
             synthesizer = paynt.synthesizer.synthesizer_ar.SynthesizerAR(dtmc_sketch)
             hole_assignment = synthesizer.synthesize(optimum_threshold=artificial_upper_bound, keep_optimum=True)
@@ -988,6 +1004,9 @@ class POMDPFamiliesSynthesis:
         return hole_assignment, paynt_value
 
     def sanity_check_pmc_at_instantiation(self, pmc : stormpy.storage.SparseParametricDtmc, resolution : dict[pycarl.Variable, pc.Rational]):
+        """
+        Sanity check of probabilities in the parametric Markov chain constructed from the FSC and the POMDP.
+        """
         # if not self.use_softmax:
         if True:
             for s in pmc.states:
