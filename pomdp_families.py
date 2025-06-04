@@ -114,7 +114,12 @@ class POMDPFamiliesSynthesis:
         self.nO = self.pomdp_sketch.num_observations + (1 if self.union else 0)
         self.nA = self.pomdp_sketch.num_actions
 
-        self.reward_model_name = self.pomdp_sketch.get_property().get_reward_name()
+        self.is_reward_prop = self.pomdp_sketch.get_property().reward
+
+        if self.is_reward_prop:
+            self.reward_model_name = self.pomdp_sketch.get_property().get_reward_name()
+        else:
+            self.reward_model_name = None
 
         print("|O| =", self.nO, "|A| =", self.nA)
 
@@ -475,12 +480,13 @@ class POMDPFamiliesSynthesis:
 
         rewards = {}
 
-        reward_model = pomdp.reward_models[reward_model_name]
-        assert not reward_model.has_state_rewards
-        assert reward_model.has_state_action_rewards
-        state_action_rewards = reward_model.state_action_rewards
+        if self.is_reward_prop:
+            reward_model = pomdp.reward_models[reward_model_name]
+            assert not reward_model.has_state_rewards
+            assert reward_model.has_state_action_rewards
+            state_action_rewards = reward_model.state_action_rewards
 
-        rewards = {}
+            rewards = {}
 
         denom = pc.FactorizedPolynomial(pc.Rational(1))
 
@@ -515,7 +521,7 @@ class POMDPFamiliesSynthesis:
                 a = action.id
                 quotient_action = o_to_a[o][a]
                 choice = ndi[s]+a
-                reward = state_action_rewards[choice]
+                if self.is_reward_prop: reward = state_action_rewards[choice]
                 N = num_nodes
                 for n in range(N):
                     sMC = s * N + n
@@ -603,10 +609,11 @@ class POMDPFamiliesSynthesis:
                             else:
                                 pmc_transitions[sMC][tMC] = action_mem_poly
 
-                    if sMC in rewards:
-                        rewards[sMC] += pc.Polynomial(action_function_params[(n, o, quotient_action)]) * pc.Rational(float(reward))
-                    else:
-                        rewards[sMC] = pc.Polynomial(action_function_params[(n, o, quotient_action)]) * pc.Rational(float(reward))
+                    if self.is_reward_prop:
+                        if sMC in rewards:
+                            rewards[sMC] += pc.Polynomial(action_function_params[(n, o, quotient_action)]) * pc.Rational(float(reward))
+                        else:
+                            rewards[sMC] = pc.Polynomial(action_function_params[(n, o, quotient_action)]) * pc.Rational(float(reward))
 
         if self.use_softmax:
             probabilistic_resolution = self.resolution_to_softmax(action_function_params, memory_function_params, parameter_resolution, num_nodes)
@@ -626,7 +633,8 @@ class POMDPFamiliesSynthesis:
                 assert np.isclose(total, 1), (s, next_states, total)
                 # if s == 6:
                     # exit()
-            rewards[s] = pc.FactorizedRationalFunction(pc.FactorizedPolynomial(rewards[s], cache), denom)
+            if self.is_reward_prop:
+                rewards[s] = pc.FactorizedRationalFunction(pc.FactorizedPolynomial(rewards[s], cache), denom)
             for t, probability_function in sorted(next_states.items(), key = lambda x : x[0]):
                 parametric_transition = pc.FactorizedRationalFunction(pc.FactorizedPolynomial(probability_function, cache), denom)
                 # evaluation = float(parametric_transition.evaluate(resolution))
@@ -660,11 +668,12 @@ class POMDPFamiliesSynthesis:
             for s in states:
                 labelling.add_label_to_state(label, s)
 
-        pmc_reward_model = stormpy.storage.SparseParametricRewardModel(optional_state_reward_vector=[r for r in rewards.values()])
-
-        del rewards
-
-        components = stormpy.storage.SparseParametricModelComponents(p_matrix, labelling, reward_models={reward_model_name : pmc_reward_model})
+        if self.is_reward_prop:
+            pmc_reward_model = stormpy.storage.SparseParametricRewardModel(optional_state_reward_vector=[r for r in rewards.values()])
+            del rewards
+            components = stormpy.storage.SparseParametricModelComponents(p_matrix, labelling, reward_models={reward_model_name : pmc_reward_model})
+        else:
+            components = stormpy.storage.SparseParametricModelComponents(p_matrix, labelling, reward_models={})
 
         del p_matrix
         
