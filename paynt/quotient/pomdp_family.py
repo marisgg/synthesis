@@ -29,6 +29,14 @@ class PomdpFamilyQuotient(paynt.quotient.mdp_family.MdpFamilyQuotient):
 
     def __init__(self, quotient_mdp, family, coloring, specification, obs_evaluator):
         super().__init__(quotient_mdp = quotient_mdp, family = family, coloring = coloring, specification = specification)
+
+        # if memory was unfolded we need to update obs_evaluator
+        if paynt.quotient.mdp_family.MdpFamilyQuotient.initial_memory_size > 1:
+            prototype_states = list(self.memory_unfolder.state_prototype)
+            state_to_obs_class = list(obs_evaluator.state_to_obs_class)
+            new_obs_classes_map = [state_to_obs_class[prototype_states[state]] for state in range(self.quotient_mdp.nr_states)]
+            obs_evaluator.state_to_obs_class = new_obs_classes_map
+
         self.obs_evaluator = obs_evaluator
 
         # for each observation, a list of actions (indices) available
@@ -63,10 +71,12 @@ class PomdpFamilyQuotient(paynt.quotient.mdp_family.MdpFamilyQuotient):
     def build_pomdp(self, family):
         ''' Construct the sub-POMDP from the given hole assignment. '''
         assert family.size == 1, "expecting family of size 1"
-        
         choices = self.coloring.selectCompatibleChoices(family.family)
         mdp,state_map,choice_map = self.restrict_quotient(choices)
         pomdp = self.obs_evaluator.add_observations_to_submdp(mdp,state_map)
+        # for state,quotient_state in enumerate(state_map):
+        #     assert pomdp.observations[state] == self.state_to_observation[quotient_state]
+        # assert pomdp.nr_observations == self.num_observations
         return SubPomdp(pomdp,self,state_map,choice_map)
 
 
@@ -76,13 +86,17 @@ class PomdpFamilyQuotient(paynt.quotient.mdp_family.MdpFamilyQuotient):
         '''
 
         # create the product
-        fsc.check_action_function(self.observation_to_actions)
-
+        fsc.check(self.observation_to_actions)
         
         self.fsc_unfolder = payntbind.synthesis.FscUnfolder(
             self.quotient_mdp, self.state_to_observation, self.num_actions, self.choice_to_action
         )
-        self.fsc_unfolder.apply_fsc(fsc.action_function, fsc.update_function)
+        if isinstance(fsc,paynt.quotient.fsc.Fsc):
+            self.fsc_unfolder.applyFsc(fsc.transitions)
+        elif isinstance(fsc,paynt.quotient.fsc.FscFactored):
+            self.fsc_unfolder.applyFscFactored(fsc.action_function, fsc.update_function)
+        else:
+            raise ValueError("unknown FSC class")
         product = self.fsc_unfolder.product
         product_choice_to_choice = self.fsc_unfolder.product_choice_to_choice
 

@@ -103,7 +103,7 @@ class PolicyTreeNode:
             result = self.family.mdp.model_check_property(prop)
             assert not result.sat
         else:
-            SynthesizerPolicyTree.double_check_policy(quotient, self.family, prop, policies[self.policy_index])
+            SynthesizerPolicyTree.double_check_policy(quotient, self.family, prop, policies[self.policy_index][0])
 
 
     def merge_children_indices(self, indices):
@@ -313,7 +313,7 @@ class PolicyTree:
         leaves = self.collect_leaves()
         logger.info("double-checking {} families...".format(len(leaves)))
         for leaf in leaves:
-            leaf.double_check(quotient,prop)
+            leaf.double_check(quotient,prop,self.policies)
         logger.info("all solutions are OK")
 
     
@@ -495,7 +495,6 @@ class SynthesizerPolicyTree(paynt.synthesizer.synthesizer.Synthesizer):
         _,mdp = quotient.fix_and_apply_policy_to_family(family, policy)
         if family.size == 1:
             quotient.assert_mdp_is_deterministic(mdp, family)
-        
         DOUBLE_CHECK_PRECISION = 1e-6
         default_precision = Property.model_checking_precision
         Property.set_model_checking_precision(DOUBLE_CHECK_PRECISION)
@@ -660,15 +659,9 @@ class SynthesizerPolicyTree(paynt.synthesizer.synthesizer.Synthesizer):
             half = len(options) // 2
             suboptions = [options[:half], options[half:]]
 
-        # construct corresponding design subspaces
-        subfamilies = []
-        family.splitter = splitter
-        new_family = family.copy()
-        for suboption in suboptions:
-            subfamily = new_family.subholes(splitter, suboption)
-            subfamily.hole_set_options(splitter, suboption)
+        subfamilies = family.split(splitter,suboptions)
+        for subfamily in subfamilies:
             subfamily.candidate_policy = None
-            subfamilies.append(subfamily)
 
         if not SynthesizerPolicyTree.discard_unreachable_choices:
             self.assign_candidate_policy(subfamilies, hole_selection, splitter, policy)
@@ -739,21 +732,18 @@ class SynthesizerPolicyTree(paynt.synthesizer.synthesizer.Synthesizer):
 
 
     def run(self, optimum_threshold=None):
-        return self.evaluate(export_filename_base=paynt.synthesizer.synthesizer.Synthesizer.export_synthesis_filename_base)
+        return self.evaluate()
 
 
     def export_evaluation_result(self, evaluations, export_filename_base):
         import json
         policies = self.policy_tree.extract_policies(self.quotient)
-        policies_string = "{\n"
+        policies_json = {}
         for index,key_value in enumerate(policies.items()):
             policy_id,policy = key_value
-            if index > 0:
-                policies_string += ",\n"
-            policy_json = self.quotient.policy_to_json(policy, indent= "  ")
-
-            policies_string += f'"{policy_id}" : {policy_json}'
-        policies_string += "}\n"
+            policy_json = self.quotient.policy_to_json(policy)
+            policies_json[policy_id] = policy_json
+        policies_string = json.dumps(policies_json, indent=4)
 
         policies_filename = export_filename_base + ".json"
         with open(policies_filename, 'w') as file:

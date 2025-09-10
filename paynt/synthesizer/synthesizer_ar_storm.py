@@ -41,21 +41,16 @@ class SynthesizerARStorm(paynt.synthesizer.synthesizer_ar.SynthesizerAR):
         # split each family in the current buffer to main family and corresponding subfamilies
         for family in families:
             if self.storm_control.use_cutoffs:
-                main_p = self.storm_control.get_main_restricted_family(family, self.storm_control.result_dict)
+                result_dict = self.storm_control.result_dict
             else:
-                main_p = self.storm_control.get_main_restricted_family(family, self.storm_control.result_dict_no_cutoffs)
-
+                result_dict = self.storm_control.result_dict_no_cutoffs
+            main_p = self.storm_control.get_main_restricted_family(family, result_dict)
             if main_p is None:
                 subfamilies.append(family)
                 continue
 
             main_families.append(main_p)
-
-            if self.storm_control.use_cutoffs:
-                subfamily_restrictions = self.storm_control.get_subfamilies_restrictions(family, self.storm_control.result_dict)
-            else:
-                subfamily_restrictions = self.storm_control.get_subfamilies_restrictions(family, self.storm_control.result_dict_no_cutoffs)
-
+            subfamily_restrictions = self.storm_control.get_subfamilies_restrictions(family, result_dict)
             subfamilies_p = self.storm_control.get_subfamilies(subfamily_restrictions, family)
             subfamilies.extend(subfamilies_p)
 
@@ -79,11 +74,6 @@ class SynthesizerARStorm(paynt.synthesizer.synthesizer_ar.SynthesizerAR):
             if self.saynt_timer is not None:
                 print(f'-----------PAYNT----------- \
                     \nValue = {family.analysis_result.improving_value} | Time elapsed = {round(self.saynt_timer.read(),1)}s | FSC size = {self.quotient.policy_size(family.analysis_result.improving_assignment)}\n', flush=True)
-                if self.storm_control.export_fsc_paynt is not None:
-                    makedirs(self.storm_control.export_fsc_paynt, exist_ok=True)
-                    with open(self.storm_control.export_fsc_paynt + "/paynt.fsc", "w") as text_file:
-                        print(family.analysis_result.improving_assignment, file=text_file)
-                        text_file.close()
             else:
                 self.stat.new_fsc_found(family.analysis_result.improving_value, family.analysis_result.improving_assignment, self.quotient.policy_size(family.analysis_result.improving_assignment))
             self.quotient.specification.optimality.update_optimum(family.analysis_result.improving_value)

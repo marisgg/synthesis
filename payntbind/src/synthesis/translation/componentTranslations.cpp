@@ -1,5 +1,7 @@
 #include "componentTranslations.h"
+#include "src/synthesis/posmg/Posmg.h"
 
+#include <storm/adapters/RationalNumberAdapter.h>
 #include <storm/models/sparse/Pomdp.h>
 #include <storm/models/sparse/Smg.h>
 #include <storm/utility/builder.h>
@@ -28,6 +30,10 @@ storm::storage::sparse::ModelComponents<ValueType> componentsFromModel(
         auto smg = static_cast<storm::models::sparse::Smg<ValueType> const&>(model);
         components.statePlayerIndications = smg.getStatePlayerIndications();
         // skipping playerNameToIndexMap since Smg does not directly exposes those
+    }
+    if (auto posmg = dynamic_cast<Posmg<ValueType> const*>(&model)) {
+        components.observabilityClasses = posmg->getObservations();
+        // state player indications are already filled in the ModelType == Smg branch
     }
     return components;
 }
@@ -111,7 +117,7 @@ storm::models::sparse::StandardRewardModel<ValueType> translateRewardModel(
     std::optional<std::vector<ValueType>> state_rewards;
     STORM_LOG_THROW(!reward_model.hasStateRewards() and !reward_model.hasTransitionRewards() and reward_model.hasStateActionRewards(),
         storm::exceptions::NotSupportedException, "expected state-action rewards");
-    
+
     uint64_t num_choices = reward_model.getStateActionRewardVector().size();
     std::vector<ValueType> action_rewards(translated_to_original_choice.size());
     for(uint64_t translated_choice: translated_choice_mask) {
@@ -206,4 +212,44 @@ template std::vector<uint32_t> translateObservabilityClasses<double>(
     storm::models::sparse::Model<double> const& model,
     std::vector<uint64_t> const& translated_to_original_state);
 
+
+
+
+template storm::storage::sparse::ModelComponents<storm::RationalNumber> componentsFromModel<storm::RationalNumber>(
+    storm::models::sparse::Model<storm::RationalNumber> const& model);
+
+template storm::models::sparse::StateLabeling translateStateLabeling<storm::RationalNumber>(
+    storm::models::sparse::Model<storm::RationalNumber> const& model,
+    std::vector<uint64_t> const& translated_to_original_state,
+    uint64_t translated_initial_state);
+
+template void translateTransitionMatrixRow<storm::RationalNumber>(
+    storm::models::sparse::Model<storm::RationalNumber> const& model,
+    storm::storage::SparseMatrixBuilder<storm::RationalNumber> & builder,
+    std::vector<uint64_t> const& original_to_translated_state,
+    std::vector<uint64_t> const& original_to_translated_choice,
+    uint64_t choice);
+template void translateTransitionMatrixRowGroup<storm::RationalNumber>(
+    storm::models::sparse::Model<storm::RationalNumber> const& model,
+    storm::storage::SparseMatrixBuilder<storm::RationalNumber> & builder,
+    std::vector<uint64_t> const& original_to_translated_state,
+    std::vector<uint64_t> const& original_to_translated_choice,
+    uint64_t state);
+
+template storm::models::sparse::ChoiceLabeling translateChoiceLabeling<storm::RationalNumber>(
+    storm::models::sparse::Model<storm::RationalNumber> const& model,
+    std::vector<uint64_t> const& translated_to_original_choice,
+    storm::storage::BitVector const& translated_choice_mask);
+template storm::models::sparse::StandardRewardModel<storm::RationalNumber> translateRewardModel(
+    storm::models::sparse::StandardRewardModel<storm::RationalNumber> const& reward_model,
+    std::vector<uint64_t> const& translated_to_original_choice,
+    storm::storage::BitVector const& translated_choice_mask);
+template std::unordered_map<std::string,storm::models::sparse::StandardRewardModel<storm::RationalNumber>> translateRewardModels(
+    storm::models::sparse::Model<storm::RationalNumber> const& model,
+    std::vector<uint64_t> const& translated_to_original_choice,
+    storm::storage::BitVector const& translated_choice_mask);
+
+template std::vector<uint32_t> translateObservabilityClasses<storm::RationalNumber>(
+    storm::models::sparse::Model<storm::RationalNumber> const& model,
+    std::vector<uint64_t> const& translated_to_original_state);
 }

@@ -1,18 +1,21 @@
-import stormpy
 import payntbind
 
 import paynt.family.family
 import paynt.quotient.quotient
 import paynt.models.models
 
-import collections
 import json
+
+import stormpy
 
 import logging
 logger = logging.getLogger(__name__)
 
 
 class MdpFamilyQuotient(paynt.quotient.quotient.Quotient):
+
+    # implicit size for scheduler memory unfolding
+    initial_memory_size = 1
 
     @staticmethod
     def map_state_action_to_choices(mdp, num_actions, choice_to_action):
@@ -38,6 +41,12 @@ class MdpFamilyQuotient(paynt.quotient.quotient.Quotient):
 
     
     def __init__(self, quotient_mdp, family, coloring, specification):
+
+        self.memory_unfolder = None
+
+        if MdpFamilyQuotient.initial_memory_size > 1:
+            quotient_mdp, family, coloring = self.unfold_scheduler_memory(quotient_mdp, family, coloring)
+
         super().__init__(quotient_mdp = quotient_mdp, family = family, coloring = coloring, specification = specification)
 
         # number of distinct actions in the quotient
@@ -110,17 +119,24 @@ class MdpFamilyQuotient(paynt.quotient.quotient.Quotient):
         ]
         return state_valuation_to_action
 
-    def policy_to_json(self, state_valuation_to_action, indent=""):
-        import json
-        json_string = "[\n"
-        for index,valuation_action in enumerate(state_valuation_to_action):
-            valuation,action = valuation_action
-            if index > 0:
-                json_string += ",\n"
-            json_string += indent + json.dumps(valuation_action)
-        json_string += "\n" + indent + "]"
-        return json_string
+    def policy_to_json(self, state_valuation_to_action, dt_control=False):
+        '''
+        :param state_valuation_to_action: a list of tuples (valuation,action) where valuation is a dictionary of variable
+        :param dt_control: if True, outputs JSON in the format expected by the DT control tool,
+                otherwise simpler format is used
+        '''
+        json_whole = []
+        for index, valuation_action in enumerate(state_valuation_to_action):
+            if dt_control:
+                json_unit = {}
+                valuation, action = valuation_action
+                json_unit["c"] = [{"origin": {"action-label": action}}]
+                json_unit["s"] = valuation
+                json_whole.append(json_unit)
+            else:
+                json_whole.append(valuation_action)
 
+        return json_whole
 
     
     def fix_and_apply_policy_to_family(self, family, policy):
@@ -195,3 +211,31 @@ class MdpFamilyQuotient(paynt.quotient.quotient.Quotient):
         choices = self.coloring.selectCompatibleChoices(family.family)
         model,state_map,choice_map = self.restrict_quotient(choices)
         return paynt.models.models.SubMdp(model,state_map,choice_map)
+    
+    def unfold_scheduler_memory(self, quotient_mdp, family, coloring):
+        '''
+        Unfold the scheduler memory of the quotient MDP to the initial_memory_size.
+        :returns a new quotient MDP with unfolded scheduler memory
+        '''
+
+        logger.info(f"unfolding scheduler memory of {self.initial_memory_size} into the model.")
+
+        # unfold the scheduler memory into the model
+        self.memory_unfolder = payntbind.synthesis.MemoryUnfolder(
+            quotient_mdp
+        )
+        unfolded_mdp = self.memory_unfolder.construct_unfolded_model(MdpFamilyQuotient.initial_memory_size)
+
+        # create new coloring
+        choice_to_hole_options = []
+        original_choice_to_hole_options = coloring.getChoiceToAssignment()
+        choice_map = list(self.memory_unfolder.choice_map)
+        for choice in range(unfolded_mdp.nr_choices):
+            original_choice = choice_map[choice]
+            choice_to_hole_options.append(original_choice_to_hole_options[original_choice])
+     
+        new_coloring = payntbind.synthesis.Coloring(family.family, unfolded_mdp.nondeterministic_choice_indices, choice_to_hole_options)
+
+        logger.info(f"unfolded model has {unfolded_mdp.nr_states} states and {unfolded_mdp.nr_choices} choices.")
+
+        return unfolded_mdp, family, new_coloring

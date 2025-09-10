@@ -1,3 +1,4 @@
+import paynt.quotient.mdp_family
 from . import version
 
 import paynt.utils.timer
@@ -32,7 +33,7 @@ def setup_logger(log_path = None):
     # root.setLevel(logging.INFO)
 
     # formatter = logging.Formatter('%(asctime)s %(threadName)s - %(name)s - %(levelname)s - %(message)s')
-    formatter = logging.Formatter('%(asctime)s - %(filename)s - %(message)s')
+    formatter = logging.Formatter('%(asctime)s - %(filename)s:%(lineno)d - %(message)s')
 
     handlers = []
     if log_path is not None:
@@ -61,6 +62,8 @@ def setup_logger(log_path = None):
     help="known optimum bound")
 @click.option("--precision", type=click.FLOAT, default=1e-4,
     help="model checking precision")
+@click.option("--exact", is_flag=True, default=False,
+    help="use exact synthesis (very limited at the moment)")
 @click.option("--timeout", type=int,
     help="timeout (s)")
 
@@ -107,10 +110,6 @@ def setup_logger(log_path = None):
     show_default=True,
     help="specify memory unfold strategy. Can only be used together with --storm-pomdp flag")
 
-@click.option("--export-fsc-storm", type=click.Path(), default=None,
-    help="path to output file for SAYNT belief FSC")
-@click.option("--export-fsc-paynt", type=click.Path(), default=None,
-    help="path to output file for SAYNT inductive FSC")
 @click.option("--export-synthesis", type=click.Path(), default=None,
     help="base filename to output synthesis result")
 
@@ -138,14 +137,14 @@ def setup_logger(log_path = None):
     help="run profiling")
 
 def paynt_run(
-    project, sketch, props, relative_error, optimum_threshold, precision, timeout,
+    project, sketch, props, relative_error, optimum_threshold, precision, exact, timeout,
     export,
     method,
     disable_expected_visits,
     fsc_synthesis, fsc_memory_size, posterior_aware,
     storm_pomdp, iterative_storm, get_storm_result, storm_options, prune_storm,
     use_storm_cutoffs, unfold_strategy_storm,
-    export_fsc_storm, export_fsc_paynt, export_synthesis,
+    export_synthesis,
     mdp_discard_unreachable_choices,
     tree_depth, tree_enumeration, tree_map_scheduler, add_dont_care_action,
     constraint_bound,
@@ -170,6 +169,8 @@ def paynt_run(
     paynt.quotient.decpomdp.DecPomdpQuotient.initial_memory_size = fsc_memory_size
     paynt.quotient.posmg.PosmgQuotient.initial_memory_size = fsc_memory_size
 
+    paynt.quotient.mdp_family.MdpFamilyQuotient.initial_memory_size = fsc_memory_size
+
     paynt.synthesizer.policy_tree.SynthesizerPolicyTree.discard_unreachable_choices = mdp_discard_unreachable_choices
 
     paynt.synthesizer.decision_tree.SynthesizerDecisionTree.tree_depth = tree_depth
@@ -182,12 +183,12 @@ def paynt_run(
         storm_control = paynt.quotient.storm_pomdp_control.StormPOMDPControl()
         storm_control.set_options(
             storm_options, get_storm_result, iterative_storm, use_storm_cutoffs,
-            unfold_strategy_storm, prune_storm, export_fsc_storm, export_fsc_paynt
+            unfold_strategy_storm, prune_storm
         )
 
     sketch_path = os.path.join(project, sketch)
     properties_path = os.path.join(project, props)
-    quotient = paynt.parser.sketch.Sketch.load_sketch(sketch_path, properties_path, export, relative_error, precision, constraint_bound)
+    quotient = paynt.parser.sketch.Sketch.load_sketch(sketch_path, properties_path, export, relative_error, precision, constraint_bound, exact)
     synthesizer = paynt.synthesizer.synthesizer.Synthesizer.choose_synthesizer(quotient, method, fsc_synthesis, storm_control)
     synthesizer.run(optimum_threshold)
 
