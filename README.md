@@ -1,6 +1,6 @@
-# rfPG: Robust Finite-Memory Policy Gradients for Hidden-Model POMDPs
+# Robust Finite-Memory Policy Gradients for Hidden-Model POMDPs
 
-This repository contains the code and docker set-up to reproduce the experiments of the IJCAI 2025 paper: "rfPG: Robust Finite-Memory Policy Gradients for Hidden-Model POMDPs".
+This repository contains the code and docker set-up to reproduce the experiments of the IJCAI 2025 paper: "Robust Finite-Memory Policy Gradients for Hidden-Model POMDPs".
 
 ## Experiments
 
