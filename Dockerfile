@@ -9,27 +9,28 @@ ARG no_threads=4
 
 WORKDIR /opt/
 
-# install dependencies
+# install paynt dependencies
 RUN apt-get update -qq
 RUN apt-get install -y graphviz
 RUN pip install click z3-solver psutil graphviz
 
-# build paynt
+# install QoL
+RUN apt-get install -y vim
+
+# copy paynt
 WORKDIR /opt/paynt
 COPY . .
+
+# Fix GIL issues in Stormpy for Saynt
+WORKDIR /opt/stormpy
+RUN git apply /opt/paynt/GILhack.patch
+RUN python3 setup.py build_ext $setup_args -j $no_threads develop
+
+# build payntbind
 WORKDIR /opt/paynt/payntbind
 RUN python setup.py build_ext $setup_args -j $no_threads develop
 
 WORKDIR /opt/paynt
 
-# (optional) install paynt
-RUN pip install -e .
-
-WORKDIR /opt/payntdev
-
-RUN pip install 
-
-COPY setup.bash GILhack.patch ./
-
-RUN setup.bash
-
+# install rfPG dependencies
+RUN pip install scipy==1.15.0 numpy

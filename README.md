@@ -14,20 +14,30 @@ To generate the plots, execute the Jupyter notebook `plots.ipynb`. Alternatively
 
 ## Installation
 
-### Docker with precompiled image (recommended and tested)
+### Docker build from source (more practical)
 
-Download the docker image `rfpg.tar` from our [Zenodo repository](https://doi.org/10.5281/zenodo.15479643) and load it with, e.g., `docker load -i rfpg.tar`. Follow similar instructions for using `podman`. The image should appear as `localhost/rfpg:ijcai`. Adapt the instructions below accordingly if you load the image under a different name.
+Quick and easy, but it *may break in the future*. Run the following *in the root directory of this repository*:
+
+Build Docker image and tag as `rfpg:latest`, where with `no_threads=4` we (re-)compile Stormpy and Paynt with 4 threads.
+
+```shell
+docker build --build-arg no_threads=4 -t rfpg:latest .
+```
+
+Run the entrypoint script inside the built docker image, and mount volume to gather results.
+
+```shell
+mkdir ./output
+docker run -dit -v "$(pwd)/output:/opt/paynt/output" --name YOURCONTAINERNAMEHERE localhost/rfpg:latest python3 entrypoint.py
+```
+
+### Docker with precompiled image
+
+Download the docker image `rfpg.tar` from our [Zenodo repository](https://doi.org/10.5281/zenodo.15479642) and load it with, e.g., `docker load -i rfpg.tar`. Follow similar instructions for using `podman`. The image should appear as `localhost/rfpg:ijcai`. Adapt the instructions below accordingly if you load the image under a different name.
 
 Then, execute the following *in the root directory of this repository*:
 
 ```shell
-docker run  -v "$(pwd):/opt/payntdev" --name YOURCONTAINERNAMEHERE localhost/rfpg:ijcai python3 entrypoint.py
-```
-
-#### Docker with pull 
-
-Use helper script to build on top of the Paynt image we created. Quick and easy, but it *may break in the future*. Run the following *in the root directory of this repository*:
-```shell
-docker run -dit -v "$(pwd):/opt/payntdev" --name YOURCONTAINERNAMEHERE randriu/paynt:latest bash -c 'cd /opt/payntdev && bash setup.bash && python3 entrypoint.py'
+docker run -it -v "$(pwd):/opt/payntdev" -v "/opt/payntdev/payntbind/" --name YOURCONTAINERNAMEHERE localhost/rfpg:ijcai python3 entrypoint.py
 ```
 
